@@ -1,0 +1,6 @@
+pydriller==2.6
+PyGithub==2.3.0
+lizard==1.17.10
+javalang==0.13.0
+pandas==2.2.2
+tqdm==4.66.4
