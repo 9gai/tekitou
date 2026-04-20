@@ -1,3 +1,6 @@
 .env
 repos.csv
 dataset.db
+dataset.db-shm
+dataset.db-wal
+__pycache__/
