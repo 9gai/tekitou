@@ -97,11 +97,66 @@
 
 ---
 
+## Step 5: issue複雑さ分類（2026-04-20実施）
+
+### 目的
+
+コメントのみコミット38,541件のうち「コードの難解さに起因するもの」を絞り込む。
+
+### 実装
+
+`classify_issues.py`：
+1. コミットメッセージから `#NNN` 形式のissue番号を抽出（`extract_issue_numbers`）
+2. GitHub APIでissueのタイトル・本文を取得
+3. 難解さ関連キーワード（`confus`, `unclear`, `explain`, `clarif` 等）にヒット かつ 否定シグナル（`NPE`, `crash`, `add feature` 等）がない場合に `issue_complexity=1` とする
+
+### DBの分類スキーム
+
+| `issue_complexity` | 意味 | 件数 |
+|---|---|---|
+| NULL | コミットメッセージに `#` なし（処理対象外） | 33,105 |
+| 0 | `#` はあるがissue番号として抽出できない | 824 |
+| 1 | issue紐づき + 難解さ関連 | 593 |
+| 2 | issue紐づき + 難解さ非該当 | 4,019 |
+
+### 実行上の問題
+
+- `extract_data.py` が長時間実行されDBの書き込みロックを保持しており、`classify_issues.py` の書き込みが `database is locked` で繰り返し失敗した
+- 対処：GitHub API呼び出しと DB書き込みをフェーズ分離し、中間結果を `issue_complexity.csv` に保存してからインポートする方式に変更
+
+### サンプル確認で判明したノイズ
+
+20件サンプルを目視確認した結果：
+
+**真陽性（コードの難解さに起因）の例**
+- `NationalSecurityAgency/ghidra#6498`：「`getLength()` はビット単位かバイト単位か？ドキュメントに見当たらない」
+- `google/guava#2178`：「`Cache.stats()` の使い方が文書化不足。初心者には使い方が分からない」
+- `google/guava#3485`：「`ImmutableList#copyOf` の null 引数での挙動を明確化してほしい」
+
+**偽陽性の例と原因**
+- `TheAlgorithms/Java#7192`, `#7284`, `#7336` 等：`#NNN` が issueではなく**PR番号**を参照しており、PRの説明文に `complex`, `document` 等が含まれていてキーワードにヒット
+- `iluwatar/java-design-patterns#53`：「冗長な単語を削除」のみで難解さとは無関係
+
+### 残存するノイズ源
+
+1. **PR番号参照問題**：`#NNN` がissueかPRかを区別していない。GitHub APIの `issue.pull_request` 属性で判別可能
+2. **TheAlgorithms型リポジトリ**：アルゴリズム実装集では「JavaDoc追加PR」が大量にあり、PR説明の `complex`/`document` キーワードが偽陽性を多数生む
+3. **キーワードマッチの限界**：issueの動機がコードの難解さでも、その言葉が使われないケースは取れない
+
+### 次のステップ候補
+
+- [ ] PR番号参照を除外するフィルタ（`issue.pull_request` で判別）
+- [ ] `TheAlgorithms/Java` 等の「教育目的リポジトリ」をリポジトリ種別として除外
+- [ ] 残り593件の精度をより厳密に評価（ランダムサンプリングで手動アノテーション）
+
+---
+
 ## 残タスク
 
 - [ ] Step 4: `python annotate.py --db dataset.db`
   - 各コメントに循環複雑度・LOC・識別子名品質を付与
   - Lizard でメソッド単位に計算するため、比較的高速な見込み
+- [ ] Step 5 精度改善（上記「次のステップ候補」参照）
 
 ---
 
