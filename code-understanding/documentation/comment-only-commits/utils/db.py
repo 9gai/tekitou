@@ -17,6 +17,7 @@ CREATE TABLE IF NOT EXISTS commits (
     commit_date    TEXT NOT NULL,
     commit_message TEXT,
     author_id      TEXT,
+    has_issue_ref  INTEGER NOT NULL DEFAULT 0,
     UNIQUE (repo_id, commit_hash),
     FOREIGN KEY (repo_id) REFERENCES repos(id)
 );
@@ -57,6 +58,12 @@ def get_connection(db_path: Path) -> sqlite3.Connection:
 def initialize(db_path: Path) -> None:
     with get_connection(db_path) as conn:
         conn.executescript(SCHEMA)
+        # 既存DBへのカラム追加（既に存在する場合は無視）
+        try:
+            conn.execute("ALTER TABLE commits ADD COLUMN has_issue_ref INTEGER NOT NULL DEFAULT 0")
+            conn.commit()
+        except Exception:
+            pass
 
 
 def insert_repo(conn: sqlite3.Connection, repo: str, clone_url: str, stars: int, last_updated: str) -> int:
@@ -71,11 +78,12 @@ def insert_repo(conn: sqlite3.Connection, repo: str, clone_url: str, stars: int,
 
 
 def insert_commit(conn: sqlite3.Connection, repo_id: int, commit_hash: str, commit_date: str,
-                  commit_message: str, author_id: str) -> int:
+                  commit_message: str, author_id: str, has_issue_ref: int = 0) -> int:
     cur = conn.execute(
-        "INSERT OR IGNORE INTO commits (repo_id, commit_hash, commit_date, commit_message, author_id) "
-        "VALUES (?, ?, ?, ?, ?)",
-        (repo_id, commit_hash, commit_date, commit_message, author_id),
+        "INSERT OR IGNORE INTO commits "
+        "(repo_id, commit_hash, commit_date, commit_message, author_id, has_issue_ref) "
+        "VALUES (?, ?, ?, ?, ?, ?)",
+        (repo_id, commit_hash, commit_date, commit_message, author_id, has_issue_ref),
     )
     if cur.lastrowid:
         return cur.lastrowid

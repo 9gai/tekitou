@@ -18,6 +18,7 @@ from tqdm import tqdm
 from utils.comment_detector import (
     has_clarify_keyword,
     has_generated_annotation,
+    has_issue_reference,
     is_comment_line,
     is_test_file,
 )
@@ -69,11 +70,12 @@ def is_comment_only_commit(commit) -> bool:
     return True
 
 
-def process_repo(repo_row: dict, db_path: Path, clone_dir: Path) -> int:
+def process_repo(repo_row: dict, db_path: Path, clone_dir: Path, issue_only: bool = False) -> int:
     repo_name = repo_row["repo"]
     clone_url = repo_row["clone_url"]
 
     local_path = clone_dir / repo_name.replace("/", "_")
+    local_path.mkdir(parents=True, exist_ok=True)
     count = 0
 
     try:
@@ -91,6 +93,10 @@ def process_repo(repo_row: dict, db_path: Path, clone_dir: Path) -> int:
             if not is_comment_only_commit(commit):
                 continue
 
+            issue_ref = int(has_issue_reference(commit.msg))
+            if issue_only and not issue_ref:
+                continue
+
             with get_connection(db_path) as conn:
                 insert_commit(
                     conn,
@@ -99,13 +105,13 @@ def process_repo(repo_row: dict, db_path: Path, clone_dir: Path) -> int:
                     commit_date=commit.committer_date.isoformat(),
                     commit_message=commit.msg,
                     author_id=anonymize(commit.author.email),
+                    has_issue_ref=issue_ref,
                 )
                 conn.commit()
             count += 1
 
     finally:
-        if local_path.exists():
-            shutil.rmtree(local_path, ignore_errors=True)
+        shutil.rmtree(local_path, ignore_errors=True)
 
     return count
 
@@ -115,6 +121,8 @@ def main():
     parser.add_argument("--repos", type=Path, default=DEFAULT_REPOS)
     parser.add_argument("--db", type=Path, default=DEFAULT_DB)
     parser.add_argument("--clone-dir", type=Path, default=Path(tempfile.gettempdir()) / "coc_repos")
+    parser.add_argument("--issue-only", action="store_true",
+                        help="issueへの参照（fixes #123 等）を含むコミットのみ収集する")
     args = parser.parse_args()
 
     args.clone_dir.mkdir(parents=True, exist_ok=True)
@@ -123,14 +131,21 @@ def main():
     with args.repos.open(encoding="utf-8") as f:
         repos = list(csv.DictReader(f))
 
+    # 処理済みリポジトリをスキップ
+    with get_connection(args.db) as conn:
+        done = {r[0] for r in conn.execute("SELECT repo FROM repos").fetchall()}
+
     total = 0
     for row in tqdm(repos, desc="リポジトリ処理中"):
+        if row["repo"] in done:
+            continue
         try:
-            n = process_repo(row, args.db, args.clone_dir)
+            n = process_repo(row, args.db, args.clone_dir, issue_only=args.issue_only)
             total += n
             tqdm.write(f"  {row['repo']}: {n} 件のコメントのみコミットを検出")
         except Exception as e:
-            tqdm.write(f"  [ERROR] {row['repo']}: {e}")
+            msg = f"  [ERROR] {row['repo']}: {e}"
+            tqdm.write(msg.encode("utf-8", errors="replace").decode("utf-8", errors="replace"))
 
     print(f"\n完了: 合計 {total} 件のコメントのみコミットを検出しました。")
 

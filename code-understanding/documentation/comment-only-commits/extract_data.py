@@ -1,16 +1,25 @@
 """
 DBに保存済みのコメントのみコミットから，コメント・対象コード・メタデータを抽出する。
 
+改善点:
+  - リポジトリ単位でクローン（1リポジトリにつき1回のクローン）
+  - get_code_origin を git blame に置き換えて高速化
+
 使用方法:
-    python extract_data.py [--db dataset.db]
+    python extract_data.py [--db dataset.db] [--clone-dir /tmp/coc_extract]
 """
 
 import argparse
 import hashlib
 import re
+import shutil
+import subprocess
+import tempfile
+from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
 
+import git
 from pydriller import Repository
 from tqdm import tqdm
 
@@ -31,14 +40,10 @@ def anonymize(value: str) -> str:
 
 
 def extract_method_context(source: str, line_no: int) -> tuple[str, str]:
-    """
-    コメントが追加された行番号から，所属メソッドと所属クラスを返す。
-    簡易的な実装：メソッドシグネチャの検索に正規表現を使用。
-    """
+    """コメントが追加された行番号から，所属メソッドと所属クラスを返す。"""
     lines = source.splitlines()
     target_line = min(line_no - 1, len(lines) - 1)
 
-    # 上方向にメソッド開始を探す
     method_start = None
     brace_depth = 0
     for i in range(target_line, -1, -1):
@@ -51,7 +56,6 @@ def extract_method_context(source: str, line_no: int) -> tuple[str, str]:
     if method_start is None:
         return "", ""
 
-    # メソッド終端を探す（単純な波括弧カウント）
     depth = 0
     method_end = method_start
     for i in range(method_start, len(lines)):
@@ -62,7 +66,6 @@ def extract_method_context(source: str, line_no: int) -> tuple[str, str]:
 
     method_text = "\n".join(lines[method_start:method_end + 1])
 
-    # クラス名を上方向から探す
     class_name = ""
     for i in range(method_start, -1, -1):
         m = re.search(r"\bclass\s+(\w+)", lines[i])
@@ -73,26 +76,64 @@ def extract_method_context(source: str, line_no: int) -> tuple[str, str]:
     return method_text, class_name
 
 
-def get_code_origin(repo_url: str, file_path: str, line_no: int, before_hash: str) -> tuple[str, str]:
+def get_code_origin_blame(local_path: Path, file_path: str, line_no: int, commit_hash: str) -> tuple[str, str, str]:
     """
-    対象行を最初に追加したコミットを git log --follow -S で近似する。
-    PyDrillerで before_hash 以前のコミットを逆順に走査する。
+    git blame --porcelain でコメント挿入位置の起源コミット・日時・著者メールを1回のコマンドで取得する。
+    Returns: (intro_hash, intro_date_iso, author_email)
     """
-    for commit in Repository(repo_url, to_commit=before_hash).traverse_commits():
-        for mf in commit.modified_files:
-            if mf.filename != Path(file_path).name:
-                continue
-            added = [ln for ln, _ in (mf.diff_parsed.get("added") or [])]
-            if line_no in added:
-                return commit.hash, commit.committer_date.isoformat()
-    return "", ""
+    try:
+        result = subprocess.run(
+            ["git", "blame", "-L", f"{line_no},{line_no}", "--porcelain",
+             f"{commit_hash}^", "--", file_path],
+            cwd=str(local_path),
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=30,
+        )
+        if result.returncode != 0 or not result.stdout.strip():
+            return "", "", ""
+
+        lines = result.stdout.splitlines()
+        intro_hash = lines[0].split()[0]
+
+        # --porcelain 出力からメタデータを直接抽出（追加のgit呼び出し不要）
+        author_email = ""
+        committer_time = ""
+        committer_tz = ""
+        for line in lines[1:]:
+            if line.startswith("author-mail "):
+                author_email = line[len("author-mail "):].strip("<>")
+            elif line.startswith("committer-time "):
+                committer_time = line[len("committer-time "):]
+            elif line.startswith("committer-tz "):
+                committer_tz = line[len("committer-tz "):]
+
+        # Unixタイムスタンプ + タイムゾーン → ISO形式
+        intro_date = ""
+        if committer_time and committer_tz:
+            import re as _re
+            from datetime import timedelta, timezone
+            m = _re.match(r"([+-])(\d{2})(\d{2})", committer_tz.strip())
+            if m:
+                sign = 1 if m.group(1) == "+" else -1
+                tz_offset = timezone(timedelta(
+                    hours=sign * int(m.group(2)),
+                    minutes=sign * int(m.group(3)),
+                ))
+                intro_date = datetime.fromtimestamp(int(committer_time), tz=tz_offset).isoformat()
+
+        return intro_hash, intro_date, author_email
+
+    except Exception:
+        return "", "", ""
 
 
 def compute_time_gap(intro_date_str: str, comment_date_str: str) -> float:
     if not intro_date_str or not comment_date_str:
         return -1.0
     try:
-        fmt = "%Y-%m-%dT%H:%M:%S%z"
         d1 = datetime.fromisoformat(intro_date_str)
         d2 = datetime.fromisoformat(comment_date_str)
         return (d2 - d1).total_seconds() / 86400
@@ -100,20 +141,15 @@ def compute_time_gap(intro_date_str: str, comment_date_str: str) -> float:
         return -1.0
 
 
-def process_commit(conn, commit_row: dict) -> None:
+def process_commit(conn, commit_row: dict, local_path: Path) -> None:
     commit_id = commit_row["id"]
-    repo_clone_url = conn.execute(
-        "SELECT clone_url FROM repos WHERE id = (SELECT repo_id FROM commits WHERE id = ?)",
-        (commit_id,),
-    ).fetchone()["clone_url"]
-
     commit_hash = commit_row["commit_hash"]
     commit_date = commit_row["commit_date"]
     commit_message = commit_row["commit_message"] or ""
     author_id = commit_row["author_id"]
     has_keyword = int(has_clarify_keyword(commit_message))
 
-    for commit in Repository(repo_clone_url, single=commit_hash).traverse_commits():
+    for commit in Repository(str(local_path), single=commit_hash).traverse_commits():
         for mf in commit.modified_files:
             if not mf.filename.endswith(".java"):
                 continue
@@ -145,16 +181,12 @@ def process_commit(conn, commit_row: dict) -> None:
 
                 method_text, class_name = extract_method_context(source, first_line_no)
 
-                intro_hash, intro_date = get_code_origin(
-                    repo_clone_url, mf.filename, first_line_no, commit_hash
+                intro_hash, intro_date, intro_author_email = get_code_origin_blame(
+                    local_path, mf.filename, first_line_no, commit_hash
                 )
                 time_gap = compute_time_gap(intro_date, commit_date)
 
-                # 元作者の特定（intro_hash が取れた場合）
-                original_author_id = ""
-                if intro_hash:
-                    for c in Repository(repo_clone_url, single=intro_hash).traverse_commits():
-                        original_author_id = anonymize(c.author.email)
+                original_author_id = anonymize(intro_author_email) if intro_author_email else ""
                 is_different = int(original_author_id != author_id) if original_author_id else -1
 
                 insert_comment(
@@ -171,7 +203,6 @@ def process_commit(conn, commit_row: dict) -> None:
                     original_author_id=original_author_id,
                     is_different_author=is_different,
                     message_has_clarify_keyword=has_keyword,
-                    # annotate.py で埋める
                     cyclomatic_complexity=None,
                     cognitive_complexity=None,
                     loc=None,
@@ -179,28 +210,66 @@ def process_commit(conn, commit_row: dict) -> None:
                     avg_identifier_length=None,
                     abbrev_ratio=None,
                 )
-        conn.commit()
+    conn.commit()
+
+
+def process_repo(repo_name: str, clone_url: str, commit_rows: list[dict], db_path: Path, clone_dir: Path) -> int:
+    """1リポジトリ分のコミットをまとめてクローン→処理→削除。"""
+    local_path = clone_dir / repo_name.replace("/", "_")
+    local_path.mkdir(parents=True, exist_ok=True)
+    count = 0
+
+    try:
+        git.Repo.clone_from(clone_url, str(local_path))
+
+        for commit_row in commit_rows:
+            try:
+                with get_connection(db_path) as conn:
+                    process_commit(conn, commit_row, local_path)
+                count += 1
+            except Exception as e:
+                msg = f"  [ERROR] commit {commit_row['commit_hash']}: {e}"
+                tqdm.write(msg.encode("utf-8", errors="replace").decode("utf-8", errors="replace"))
+    finally:
+        shutil.rmtree(local_path, ignore_errors=True)
+
+    return count
 
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--db", type=Path, default=DEFAULT_DB)
+    parser.add_argument("--clone-dir", type=Path, default=Path(tempfile.gettempdir()) / "coc_extract")
     args = parser.parse_args()
 
+    args.clone_dir.mkdir(parents=True, exist_ok=True)
+
     with get_connection(args.db) as conn:
-        commits = conn.execute(
-            "SELECT c.* FROM commits c "
+        rows = conn.execute(
+            "SELECT c.*, r.repo, r.clone_url FROM commits c "
+            "JOIN repos r ON c.repo_id = r.id "
             "WHERE NOT EXISTS (SELECT 1 FROM comments cm WHERE cm.commit_id = c.id)"
         ).fetchall()
+        commits = [dict(row) for row in rows]
 
-    print(f"{len(commits)} 件のコミットを処理します ...")
+    print(f"{len(commits)} 件の未処理コミットを処理します ...")
 
-    for row in tqdm(commits, desc="データ抽出中"):
+    # リポジトリ単位でグループ化
+    repo_commits: dict[str, list[dict]] = defaultdict(list)
+    repo_clone_url: dict[str, str] = {}
+    for row in commits:
+        repo_commits[row["repo"]].append(row)
+        repo_clone_url[row["repo"]] = row["clone_url"]
+
+    for repo_name in tqdm(repo_commits, desc="リポジトリ処理中"):
+        commit_rows = repo_commits[repo_name]
         try:
-            with get_connection(args.db) as conn:
-                process_commit(conn, dict(row))
+            n = process_repo(repo_name, repo_clone_url[repo_name], commit_rows, args.db, args.clone_dir)
+            msg = f"  {repo_name}: {n}/{len(commit_rows)} 件処理"
+            tqdm.write(msg.encode("utf-8", errors="replace").decode("utf-8", errors="replace"))
         except Exception as e:
-            tqdm.write(f"  [ERROR] commit {row['commit_hash']}: {e}")
+            msg = f"  [ERROR] {repo_name}: {e}"
+            tqdm.write(msg.encode("utf-8", errors="replace").decode("utf-8", errors="replace"))
 
     print("完了")
 

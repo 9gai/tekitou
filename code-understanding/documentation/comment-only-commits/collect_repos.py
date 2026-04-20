@@ -12,7 +12,10 @@ import os
 import time
 from pathlib import Path
 
+from dotenv import load_dotenv
 from github import Github, RateLimitExceededException
+
+load_dotenv(Path(__file__).parent / ".env")
 
 OUTPUT = Path(__file__).parent / "repos.csv"
 
