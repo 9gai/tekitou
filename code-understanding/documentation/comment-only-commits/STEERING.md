@@ -145,18 +145,88 @@
 
 ### 次のステップ候補
 
-- [ ] PR番号参照を除外するフィルタ（`issue.pull_request` で判別）
-- [ ] `TheAlgorithms/Java` 等の「教育目的リポジトリ」をリポジトリ種別として除外
-- [ ] 残り593件の精度をより厳密に評価（ランダムサンプリングで手動アノテーション）
+- [x] PR番号参照を除外するフィルタ（`issue.pull_request` で判別）→ **実施済み（`filter_prs.py`）**
+- [ ] `TheAlgorithms/Java` 等の「教育目的リポジトリ」をリポジトリ種別として除外（現状6件・影響小）
+- [ ] 残り247件の精度をより厳密に評価（ランダムサンプリングで手動アノテーション）
+
+---
+
+## Step 6: PR番号フィルタ適用結果（2026-04-20実施）
+
+`filter_prs.py` を実装し、issue_complexity=1 の593件に対して `issue.pull_request` 属性で再確認。
+
+| フィルタ後 | 件数 |
+|---|---|
+| issue_complexity=1（維持・本物のissue） | **247件** |
+| issue_complexity=2（降格・PR参照だった） | 346件（降格） |
+
+**593 → 247件**：約58%がPR参照由来の偽陽性だった。降格が多かったリポジトリ：jMonkeyEngine, jetty, sofastack, RoaringBitmap 等。
+
+---
+
+## Step 7: 247件のissue内容分析（2026-04-20実施）
+
+247件に紐づく228件の固有issueを全件取得・精読し分類した（`issue_texts.csv`）。
+
+### issueの種類別内訳（重複あり）
+
+| カテゴリ | 件数目安 | 代表例 |
+|---|---|---|
+| セマンティクスが名前/型から読めない | ~60件 | `getLength()` bits or bytes？`maxConnectionsPerHost` が実際はper-URL |
+| 前提条件・制約が隠れている | ~55件 | `stats()` 前に `recordStats()` 必要、`CSVFormat` がimmutable、例外が未文書 |
+| APIドキュメントの誤り・古くなった記述 | ~45件 | `STATE_READY` が古い、`DateTimeFormatter` の動作と記述の乖離 |
+| 設計の意図・なぜそうなっているか | ~25件 | `setValue()` が値未変更でもchangedフラグをtrueにする理由、`Mono.cache()` の並行保証 |
+| APIの使い方が文書から分からない | ~25件 | `addSubscription()` にnull渡せるか、`Binding`/`Converter` のinvokeタイミング |
+| 偽陽性（機能追加・バグ報告） | ~35件 | jOOQ機能追加、picocli機能要求、junit新機能 |
+
+**実質的に「コードの難解さ」起因のissue：約210件（85%）**
+
+### 「コメントが必要なコード」の難解さの根本原因（仮説）
+
+1. **セマンティクスの曖昧さ**：メソッド名・戻り値型だけでは意味・単位・解釈が確定しない
+2. **隠れた状態依存性**：呼び出し前後の状態、スレッドセーフ性、例外条件がAPI境界に現れない
+3. **設計上の非自明な選択**：動作は読めるがなぜその実装かが不明（トレードオフ・意図的仕様）
+4. **名前と動作の乖離**：メソッド名が示す契約と実際の動作が一致しない
+
+---
+
+## Step 8: 特徴量計算・分析（2026-04-20実施）
+
+### 実装済みスクリプト
+
+| スクリプト | 計算内容 |
+|---|---|
+| `annotate.py` | cyclomatic_complexity, loc, parameter_count, avg_identifier_length, abbrev_ratio（Lizard使用） |
+| `annotate_signature.py` | is_public, return_type_primitive, method_name_word_count, throws_count（シグネチャ解析） |
+
+**注意**：`cognitive_complexity` は `target_method` が複数メソッドを含むため正しく計算できず NULL にリセット済み。`is_different_author` と `time_gap_days` は99%以上が -1（sentinel）で使用不可。
+
+### issue_complexity グループ別特徴量比較（target_methodありの83,962件）
+
+| 特徴量 | NULL（#なし） | 1（高品質） | 差の方向 |
+|---|---|---|---|
+| cyclomatic_complexity | 2.31 | 1.46 | ↓ 低い |
+| loc | 9.97 | 6.73 | ↓ 短い |
+| is_public | 0.768 | **0.926** | ↑ 公開APIが多い |
+| return_type_primitive | 0.401 | **0.125** | ↓ 非プリミティブが多い |
+| method_name_word_count | 2.22 | 2.66 | ↑ 語数多い |
+| abbrev_ratio | 0.179 | 0.073 | ↓ 略語が少ない |
+
+### 主要な発見
+
+1. **コメントが必要なのは公開API（92.6%がpublic）**：内部実装ではなくAPIバウンダリに集中
+2. **戻り値が非プリミティブ型**：`CacheStats`・`Range`・`Duration` 等のドメイン型。意味が型から読めない
+3. **構造的複雑さ（CC・LOC）は低い**：難解さの原因は構造ではなく「セマンティクスの不明確さ」
+
+→ 従来のコード複雑度指標（CC、LOC）は「コメントが必要なコード」の識別に不十分。
+　 **公開APIかつドメイン型を返すメソッドが特に説明を必要としている。**
 
 ---
 
 ## 残タスク
 
-- [ ] Step 4: `python annotate.py --db dataset.db`
-  - 各コメントに循環複雑度・LOC・識別子名品質を付与
-  - Lizard でメソッド単位に計算するため、比較的高速な見込み
-- [ ] Step 5 精度改善（上記「次のステップ候補」参照）
+- [ ] 比較群（コメントが追加されなかった同条件のpublic APIメソッド）との特徴量比較
+- [ ] 予測モデルの構築（現特徴量でのbaseline）
 
 ---
 
