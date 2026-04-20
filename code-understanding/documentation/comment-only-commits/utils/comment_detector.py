@@ -27,6 +27,40 @@ _ISSUE_REF = re.compile(
     re.IGNORECASE,
 )
 
+# issue番号抽出用（org/repoプレフィックスとissue番号をキャプチャ）
+_ISSUE_EXTRACT = re.compile(
+    r"(?:(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?|ref(?:erence[sd]?)?)\s+)?"
+    r"([\w.\-]+/[\w.\-]+)?#(\d+)",
+    re.IGNORECASE,
+)
+
+# issueがコードの難解さに関するものかを判定するキーワード
+# 肯定シグナル：理解困難・説明要求・ドキュメント不足
+COMPLEXITY_KEYWORDS = re.compile(
+    r"\b("
+    r"confus|unclear|hard\s+to\s+(read|understand|follow)|"
+    r"difficult\s+to\s+(read|understand|follow)|"
+    r"not\s+(clear|obvious|documented|understandable)|"
+    r"what\s+does|why\s+(is|does|are|was|were|do)|"
+    r"explain|clarif|document|undocumented|"
+    r"complex|tricky|mislead|ambiguous|opaque|"
+    r"poorly\s+(documented|written|named|commented)|"
+    r"missing\s+(comment|doc|documentation|javadoc)|"
+    r"no\s+(comment|doc|documentation|javadoc)"
+    r")\w*\b",
+    re.IGNORECASE,
+)
+
+# 強い否定シグナル：バグ・クラッシュ・パフォーマンス・機能追加は除外
+_NEGATIVE_SIGNALS = re.compile(
+    r"\b("
+    r"NPE|NullPointer|exception|crash|error|fail|bug|broken|"
+    r"performance|slow|memory|leak|timeout|deadlock|"
+    r"implement|add\s+(support|feature)|new\s+feature|enhancement|request"
+    r")\w*\b",
+    re.IGNORECASE,
+)
+
 TEST_FILE_PATTERN = re.compile(r"(Test|Tests|TestCase)\.java$")
 GENERATED_PATTERN = re.compile(r"@Generated")
 
@@ -57,6 +91,33 @@ def has_clarify_keyword(message: str) -> bool:
 def has_issue_reference(message: str) -> bool:
     """コミットメッセージにGitHub issueへの参照（fixes #123 等）が含まれるか。"""
     return bool(_ISSUE_REF.search(message or ""))
+
+
+def extract_issue_numbers(message: str) -> list[tuple[str | None, int]]:
+    """
+    コミットメッセージからissue参照を抽出する。
+    Returns: list of (repo_override_or_None, issue_number)
+      repo_override が None の場合は同一リポジトリのissue
+    """
+    results = []
+    for m in _ISSUE_EXTRACT.finditer(message or ""):
+        repo_override = m.group(1) or None
+        issue_number = int(m.group(2))
+        results.append((repo_override, issue_number))
+    return results
+
+
+def is_complexity_related(text: str) -> bool:
+    """
+    issue のタイトル+本文がコードの難解さ・理解困難に関するものかを判定する。
+    肯定シグナルありかつ強い否定シグナルなし，の場合に True を返す。
+    """
+    text = text or ""
+    if not COMPLEXITY_KEYWORDS.search(text):
+        return False
+    if _NEGATIVE_SIGNALS.search(text):
+        return False
+    return True
 
 
 def is_test_file(path: str) -> bool:

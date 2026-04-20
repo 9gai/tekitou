@@ -4,3 +4,4 @@ dataset.db
 dataset.db-shm
 dataset.db-wal
 __pycache__/
+*.csv

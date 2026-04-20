@@ -17,7 +17,8 @@ CREATE TABLE IF NOT EXISTS commits (
     commit_date    TEXT NOT NULL,
     commit_message TEXT,
     author_id      TEXT,
-    has_issue_ref  INTEGER NOT NULL DEFAULT 0,
+    has_issue_ref     INTEGER NOT NULL DEFAULT 0,
+    issue_complexity  INTEGER,  -- NULL=未確認, 1=難解さ関連, 0=非該当
     UNIQUE (repo_id, commit_hash),
     FOREIGN KEY (repo_id) REFERENCES repos(id)
 );
@@ -47,8 +48,8 @@ CREATE TABLE IF NOT EXISTS comments (
 """
 
 
-def get_connection(db_path: Path) -> sqlite3.Connection:
-    conn = sqlite3.connect(db_path)
+def get_connection(db_path: Path, timeout: float = 30.0) -> sqlite3.Connection:
+    conn = sqlite3.connect(db_path, timeout=timeout)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA foreign_keys=ON")
@@ -59,11 +60,15 @@ def initialize(db_path: Path) -> None:
     with get_connection(db_path) as conn:
         conn.executescript(SCHEMA)
         # 既存DBへのカラム追加（既に存在する場合は無視）
-        try:
-            conn.execute("ALTER TABLE commits ADD COLUMN has_issue_ref INTEGER NOT NULL DEFAULT 0")
-            conn.commit()
-        except Exception:
-            pass
+        for col, definition in [
+            ("has_issue_ref", "INTEGER NOT NULL DEFAULT 0"),
+            ("issue_complexity", "INTEGER"),
+        ]:
+            try:
+                conn.execute(f"ALTER TABLE commits ADD COLUMN {col} {definition}")
+                conn.commit()
+            except Exception:
+                pass
 
 
 def insert_repo(conn: sqlite3.Connection, repo: str, clone_url: str, stars: int, last_updated: str) -> int:
