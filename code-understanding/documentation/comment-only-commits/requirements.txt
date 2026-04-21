@@ -5,3 +5,4 @@ javalang==0.13.0
 pandas==2.2.2
 tqdm==4.66.4
 python-dotenv==1.0.1
+deep-translator==1.11.4
