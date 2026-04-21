@@ -5,3 +5,4 @@ dataset.db-shm
 dataset.db-wal
 __pycache__/
 *.csv
+!annotation/sample_100.csv

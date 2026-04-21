@@ -1,0 +1,1574 @@
+label,notes,github_url,repo,commit_date,commit_message,is_different_author,time_gap_days,file_path,target_class,comment_type,added_comment,target_method
+,,https://github.com/camunda/camunda/commit/b3cbd2ece81cd275fa88ec1e1586ef9273d70a37,camunda/camunda,2024-02-12,refactor(raft): document force configure protocol,-1,,ReconfigurationHelper.java,ReconfigurationHelper,javadoc,"  /**
+   * Force configuration works as follows. Assume current members are 0,1,3,4, and we want to force
+   * remove 2 and 3.
+   *
+   * <pre>
+   *
+   *   External                        Raft 0 (follower)                     Raft 1 (follower)             Raft 2/3
+   *      |                                 |                                     |                        (Members to be removed)
+   *      |    forceConfigure([0,1])        |                                     |                                    |
+   *      |-------------------------------->|                                     |                                    |
+   *      |                                 |                                     |                                    |
+   *      |               Configuration={   |                                     |                                    |
+   *      |                newMembers=[0,1],|                                     |                                    |
+   *      |                oldMembers=[]    |                                     |                                    |
+   *      |                force=TRUE       |                                     |                                    |
+   *      |               Commit new config |   ForceConfigureRequest(newMembers) |                                    |
+   *      |                                 |------------------------------------>|                                    |
+   *      |                                 |               OK                    |Commit new Configuration            |
+   *      |         OK                      |<------------------------------------|                                    |
+   *      |<--------------------------------|                                     |        Poll/Vote/Append            |
+   *      |                                 |                                     |<-----------------------------------|
+   *      |                        election |             poll/vote               |----------------------------------->|
+   *      |                        timeout  ------------------------------------->|     Reject because Force==TRUE     |
+   *      |                                 |               OK                    |                                    |
+   *      |                                 |<------------------------------------|                                    |
+   *      |                    Become leader|                                     |                                    |
+   *      |                                 |                                     |                                    |
+   *      |             Append InitialEntry |                                     |                                    |
+   *      |       Append ConfigurationEntry |                                     |                                    |
+   *      |               Configuration={   |           AppendEntry               |                                    |
+   *      |                newMembers=[0,1] |------------------------------------>|                                    |
+   *      |                force=FALSE      |<------------------------------------|                                    |
+   *      |               }                 |                                     |                                    |
+   *      |                                 |------------------------------------>|                                    |
+   *      |                                 |<------------------------------------|                                    |
+   *      |                                 |                                     |                                    |
+   *      |                Commit new config|            AppendEntry              |On commitIndex update               |
+   *      |                                 |------------------------------------>|Commit new config                   |
+   *      |                                 |                                     |                                    |
+   *      |                                 |                                     |      Poll/Vote                     |
+   *      |                                 |                                     |<-----------------------------------|
+   *      |                                 |                                     |  Reject because log not uptodate   |
+   *      |                                 |                                     |----------------------------------->|
+   *      |                                 |                                     |                                    |
+   * </pre>
+   */","  private void leaveInternal(final CompletableFuture<Void> future) {
+    final var leaving = raftContext.getCluster().getLocalMember();
+    final var receiver =
+        Optional.ofNullable(raftContext.getLeader())
+            .map(DefaultRaftMember::memberId)
+            .or(
+                () ->
+                    raftContext.getCluster().getVotingMembers().stream()
+                        .map(RaftMember::memberId)
+                        .findAny())
+            .orElseThrow();
+    raftContext
+        .getProtocol()
+        .leave(receiver, LeaveRequest.builder().withLeavingMember(leaving).build())
+        .whenCompleteAsync(
+            (response, error) -> {
+              if (error != null) {
+                future.completeExceptionally(error);
+              } else if (response.status() == Status.OK) {
+                future.complete(null);
+                raftContext.updateState(State.LEFT);
+              } else {
+                future.completeExceptionally(response.error().createException());
+              }
+            },
+            threadContext);
+  }"
+,,https://github.com/jenkinsci/jenkins/commit/ad4c39f5e24db2af2c5d1fad9febdfdd65afdf08,jenkinsci/jenkins,2013-03-08,Clarifying that symlinkPath may not be absolute.,-1,,Util.java,Util,inline,     *      Where to create a symlink in (relative to {@code baseDir}),"    public static FileSet createFileSet(File baseDir, String includes) {
+        return createFileSet(baseDir,includes,null);
+    }"
+,,https://github.com/google/guava/commit/14978e59e56fc770853c3fe3cecd6b8c4d97997b,google/guava,2017-03-22,"Moved TimeLimiter's class-level documentation to newProxy() and replaced it with more general info.
+
+-------------
+Created by MOE: https://github.com/google/moe
+MOE_MIGRATED_REVID=150894315",-1,,TimeLimiter.java,,inline," * Imposes a time limit on method calls.
+---
+   * <p>For example, to return the value of {@code target.someMethod()}, but substitute {@code
+   * DEFAULT_VALUE} if this method call takes over 50 ms, you can use this code:
+   *
+   * <pre>
+   *   TimeLimiter limiter = . . .;
+   *   TargetType proxy = limiter.newProxy(
+   *       target, TargetType.class, 50, TimeUnit.MILLISECONDS);
+   *   try {
+   *     return proxy.someMethod();
+   *   } catch (UncheckedTimeoutException e) {
+   *     return DEFAULT_VALUE;
+   *   }
+   * </pre>
+   *",
+,,https://github.com/oracle/graal/commit/ceca6d89ab9b66bbed4a68bf91b50e43adc57fa8,oracle/graal,2017-11-08,Javadoc: Clarify relationship of IS_POINTER and TO_NATIVE messages.,-1,,Message.java,,inline," * Copyright (c) 2014, 2017, Oracle and/or its affiliates. All rights reserved.
+---
+     * It is expected that objects should only return {@link Boolean#TRUE} here if the native
+     * pointer value corresponding to this object already exists, and obtaining it is a cheap
+     * operation. If an object can be transformed to a pointer representation, but this hasn't
+     * happened yet, the object is expected to return {@link Boolean#FALSE} to {@link #IS_POINTER},
+     * and wait for the {@link #TO_NATIVE} message to trigger the transformation.
+     *
+---
+     * If an object returns true for {@link #IS_POINTER}, it is still expected that this object
+     * supports the {@link #TO_NATIVE} message. It can just return a reference to itself in that
+     * case.
+     * <p>",
+,,https://github.com/google/ExoPlayer/commit/fac7b16915bb1cdb6cec0b374d087c60f7a6aad9,google/ExoPlayer,2022-09-07,"Clarify GlTextureProcessor.InputListener contract
+
+PiperOrigin-RevId: 472745311
+(cherry picked from commit 5e2823bb1e9d6c4331dba083ff1d050743bd2e25)",-1,,GlTextureProcessor.java,,inline,"     * <p>The implementation shall not assume the {@link GlTextureProcessor} is {@linkplain
+     * #onReadyToAcceptInputFrame ready to accept another input frame} when this method is called.
+     *","    default void onReadyToAcceptInputFrame() {}
+"
+,,https://github.com/google/ExoPlayer/commit/6509dce6b7cea332b22449bfdd7bade6f74515be,google/ExoPlayer,2017-06-30,"Clarify JavaDoc of MediaPeriod.
+
+Two of MediaPeriod's methods are only called after the media period has been
+prepared. Added this to JavaDoc of these method to simplify implementations.
+
+-------------
+Created by MOE: https://github.com/google/moe
+MOE_MIGRATED_REVID=160510373",-1,,MediaPeriod.java,,inline,"   * <p>
+   * This method should only be called after the period has been prepared.",
+,,https://github.com/openjdk/jdk/commit/1d3192ee04183f0c8b13bf21e1aff2e9dedb3dfa,openjdk/jdk,2014-07-16,"4867890: Clarify the return value/exception for java.security.SignedObject.verify
+
+Reviewed-by: weijun",-1,,SignedObject.java,,inline," * Copyright (c) 1997, 2014, Oracle and/or its affiliates. All rights reserved.
+---
+     * @exception SignatureException if signature verification failed (an
+     *     exception prevented the signature verification engine from completing
+     *     normally).",
+,,https://github.com/jenkinsci/jenkins/commit/cce6d8b17e479c48fd128b75851e61bd4f8bb5d6,jenkinsci/jenkins,2008-08-10,"clarifying ID semantics
+
+git-svn-id: https://hudson.dev.java.net/svn/hudson/trunk/hudson/main@11362 71c3de6d-444a-0410-be80-ed276b4c234a",-1,,FeedAdapter.java,,inline,"     *
+     * This needs to produce a tag URL as per RFC 4151, required by Atom 1.0.",
+,,https://github.com/spotbugs/spotbugs/commit/2e9d29c649befbce20b58a51cd8515e1f1e25165,spotbugs/spotbugs,2022-09-02,"chore: add a comment to describe why we check `depth == 1`
+
+Signed-off-by: Kengo TODA <skypencil@gmail.com>",-1,,BetterCFGBuilder2.java,Context,inline,"                    // now we assume that the previous instruction (prevPrev) is the opcode
+                    // that pushes the reference to the target of PUTFIELD","                } else if (prevInst instanceof DUP_X1 && depth == 3) {
+                    depth = 1;"
+,,https://github.com/robolectric/robolectric/commit/b5bbc24081725be9e4bb3700f3d132a49021a40f,robolectric/robolectric,2014-01-01,Add comments to clarify which classes are being shadowed.,-1,,ShadowAsyncTaskLoader.java,,javadoc,"/**
+ * Shadow AsyncTaskLoader from the support library.
+ */
+---
+/**
+ * Shadow Loader from the support library.
+ */",
+,,https://github.com/bazelbuild/bazel/commit/e8372a005750dd3f9999985f026872c6bca49e93,bazelbuild/bazel,2020-02-28,"Add some clarifying documentation
+
+Make it more clear when a few methods are called.
+
+RELNOTES: None
+PiperOrigin-RevId: 297902161",-1,,BlazeModule.java,for,inline,"   * Returns a helper that the {@link PackageFactory} will use during package loading, or null if
+   * the module does not provide any helper.
+   *
+   * <p>Called once during server startup some time after {@link #serverInit}.
+   *
+   * <p>Note that only one helper per Bazel/Blaze runtime is allowed.
+---
+   * Returns a {@link PackageValidator} to be used to validate loaded packages, or null if the
+   * module does not provide any validator.
+   *
+   * <p>Called once during server startup some time after {@link #serverInit}.
+   *
+   * <p>Note that only one helper per Bazel/Blaze runtime is allowed.
+---
+  /**
+   * Provides additional precomputed values to inject into the skyframe graph. Called on every
+   * command execution.
+   */","  public QueryRuntimeHelper.Factory getQueryRuntimeHelperFactory() {
+    return null;
+  }"
+,,https://github.com/bitcoinj/bitcoinj/commit/b51922dde7c2bdefd50b668d1c3d1c5e2f1b74bb,bitcoinj/bitcoinj,2019-05-24,ScriptPattern: Correct and clarify the JavaDoc on isSentToMultisig(),-1,,ScriptPattern.java,ScriptPattern,inline,"     * Returns whether this script matches the format used for m-of-n multisig outputs:
+     * {@code [m] [keys...] [n] CHECKMULTISIG}","    public static byte[] extractHashFromP2WH(Script script) {
+        return script.chunks.get(1).data;
+    }"
+,,https://github.com/apache/beam/commit/7644806cf5945b4cb0ff2e8d790bae4b5ef59043,apache/beam,2019-09-24,Fixing issue in AvroCoder documentation.,-1,,AvroCoder.java,AvroCoder,inline,   * <p>The schema must correspond to the type provided.,"  public static AvroCoder<GenericRecord> of(Schema schema) {
+    return new AvroCoder<>(GenericRecord.class, schema);
+  }"
+,,https://github.com/google/guava/commit/2fc0f78e78ca4918c377e6fefe1a4ab2e46aacc5,google/guava,2019-07-08,"Update Fetch Metadata (formerly Sec-Metadata) headers to point to w3c documentation now it's been adopted by WebAppSec.
+
+RELNOTES=Update Fetch Metadata (formerly Sec-Metadata) headers to point to w3c documentation now it's been adopted by WebAppSec.
+
+-------------
+Created by MOE: https://github.com/google/moe
+MOE_MIGRATED_REVID=256030288",-1,,HttpHeaders.java,HttpHeaders,inline,"   * The HTTP <a href=""https://w3c.github.io/webappsec-fetch-metadata/"">{@code Sec-Fetch-Dest}</a>
+   * header field name.
+---
+   * The HTTP <a href=""https://w3c.github.io/webappsec-fetch-metadata/"">{@code Sec-Fetch-Mode}</a>
+   * header field name.
+---
+   * The HTTP <a href=""https://w3c.github.io/webappsec-fetch-metadata/"">{@code Sec-Fetch-Site}</a>
+   * header field name.
+---
+   * The HTTP <a href=""https://w3c.github.io/webappsec-fetch-metadata/"">{@code Sec-Fetch-User}</a>
+   * header field name.
+---
+   * The HTTP <a href=""https://w3c.github.io/webappsec-fetch-metadata/"">{@code Sec-Metadata}</a>
+   * header field name.","  private HttpHeaders() {}
+"
+,,https://github.com/google/guava/commit/106948459ac6dc6dfc5d3053639b47e0dc4e8745,google/guava,2019-04-12,"Update GraphBuilder documentation with option of building an immutable graph
+
+RELNOTES=n/a
+
+-------------
+Created by MOE: https://github.com/google/moe
+MOE_MIGRATED_REVID=242879149",-1,,GraphBuilder.java,,inline," * A builder for constructing instances of {@link MutableGraph} or {@link ImmutableGraph} with
+ * user-defined properties.
+---
+ * <p>Examples of use:
+---
+ * // Building a mutable graph
+---
+ *
+ * // Building an immutable graph
+ * ImmutableGraph<String> immutableGraph =
+ *     GraphBuilder.undirected()
+ *         .allowsSelfLoops(true)
+ *         .<String>immutable()
+ *         .putEdge(""bread"", ""bread"")
+ *         .putEdge(""chocolate"", ""peanut butter"")
+ *         .putEdge(""peanut butter"", ""jelly"")
+ *         .build();",
+,,https://github.com/bazelbuild/bazel/commit/f596485c28306d2f89519e6b9e88ee16fe05a8a6,bazelbuild/bazel,2023-11-22,"Clarify the purpose and overall behavior of RemoteActionFileSystem.
+
+PiperOrigin-RevId: 584679218
+Change-Id: I535fa24c3429285f393278e48e13327c8c52b0c3",-1,,RemoteActionFileSystem.java,,inline," * An action filesystem suitable for use when building with remote caching or execution.
+---
+ * <p>It acts as a union filesystem over three different sources:
+---
+ * <ul>
+ *   <li>The action input map, providing read-only in-memory access to the metadata (but not the
+ *       contents) of the action's declared inputs.
+ *   <li>The remote output tree, an in-memory filesystem providing read/write access to the metadata
+ *       (but not the contents) of remotely stored files injected during action execution.
+ *   <li>The local filesystem, providing read/write access to the metadata and contents of files
+ *       residing on disk, including the inputs and outputs of local spawns.
+ * </ul>
+ *
+ * <p>Generally speaking, file operations consult the underlying sources in that order and operate
+ * on the first result found, although some (e.g. readdir) collate information from all sources. The
+ * contents of remotely stored files are transparently downloaded when an operation requires them.
+ *
+ * <p>Special care must be taken with operations that follow symlinks, as the symlink and its target
+ * path may reside on different sources, with an arbitrary number of indirections in between. This
+ * is required because some actions (notably SymlinkAction) may materialize an output as a symlink
+ * to an input. Most operations call resolveSymbolicLinks upfront (which is able to canonicalize
+ * paths taking every source into account) and only then delegate to the underlying sources.
+ *
+ * <p>The implementation assumes that an action never modifies its input files, but may otherwise
+ * modify any path in the output tree, including modifications that undo previous ones (e.g.,
+ * writing to a path and then moving it elsewhere). No effort is made to detect irreconcilable
+ * differences between sources (e.g., distinct files of the same name in two different sources).",
+,,https://github.com/openjdk/jdk/commit/e44ef0c32b3c2fcd0a6293838d9185b6d0719219,openjdk/jdk,2025-10-01,"8367704: Fix minor documentation issues in java.time.**
+
+Reviewed-by: naoto, rriggs",-1,,Duration.java,,inline,"     * where each day is 86,400 seconds which implies a 24 hour day.
+---
+     * where each hour is 3,600 seconds.
+---
+     *    ""PT10H""     -- parses as ""10 hours"" (where an hour is 3,600 seconds)
+     *    ""P2D""       -- parses as ""2 days"" (where a day is 24 hours or 86,400 seconds)
+---
+     * To guarantee a positive duration, call {@link #abs()} on the result.
+---
+     * The number of days is multiplied by 86,400 to obtain the number of seconds to add.
+---
+     * The number of days is multiplied by 86,400 to obtain the number of seconds to subtract.
+---
+     * The number of hours is multiplied by 3,600 to obtain the number of seconds to subtract.
+---
+     * The number of minutes is multiplied by 60 to obtain the number of seconds to subtract.
+---
+     * number of seconds by 86,400.
+---
+     * number of seconds by 3,600.
+---
+     * number of seconds by 86,400.
+---
+     *    ""20.345 seconds""                 -- ""PT20.345S""
+---
+     *    ""10 hours"" (10 * 3,600 seconds)  -- ""PT10H""
+     *    ""2 days"" (2 * 86,400 seconds)    -- ""PT48H""
+---
+ * forming an 86,400 second day.
+---
+ * to be very close to the 86,400th fraction of a day.
+---
+ * As a result, the length of a solar day in 2012 is slightly longer than 86,400 SI seconds.
+---
+ * As such, UTC permits a day to have 86,399 SI seconds or 86,401 SI seconds where
+---
+ * The Java Time-Scale divides each calendar day into exactly 86,400
+---
+ * exactly 86,400 seconds per day.
+---
+     * @param daysToSubtract  the days to subtract, positive or negative
+---
+     * The offset must be in the range {@code -18:00} to {@code +18:00}, which corresponds to -64,800 to +64,800.
+---
+     * @param totalSeconds  the total time-zone offset in seconds, from -64,800 to +64,800
+---
+     * @param totalSeconds  the total time-zone offset in seconds, from -64,800 to +64,800
+---
+ * used, typically ""summer"" time. Two additional methods,
+---
+     * The local date and time are first combined to form a local date-time.
+---
+     * @return the zoned date-time, not null
+---
+     * @return the zoned date-time, not null
+---
+ * Copyright (c) 2012, 2025, Oracle and/or its affiliates. All rights reserved.
+---
+ * The classes defined here represent the principal date-time concepts,
+---
+ * This stores a time like '11:30+01:00'.
+---
+ * As such, the main classes are ISO-only. The second principle is that most of those who want a
+---
+ * Copyright (c) 2012, 2025, Oracle and/or its affiliates. All rights reserved.
+---
+     * For example, during the winter, Paris has an offset of {@code +01:00}, which is 3,600 seconds.
+---
+ * have a range of '1 - 7', despite the fact that values 3 and 5 are invalid.",
+,,https://github.com/google/ExoPlayer/commit/64b50ba9fceeea82d411f9adf84a1c2424527ce4,google/ExoPlayer,2020-05-06,"Clarify DRM passthrough comment
+
+PiperOrigin-RevId: 310142362",-1,,MediaCodecAudioRenderer.java,MediaCodecAudioRenderer,inline,"    // In passthrough mode, if DRM init data is present we need to use a passthrough decoder to
+    // decrypt the content. For passthrough of clear content we don't need a decoder at all.","  public String getName() {
+    return TAG;
+  }"
+,,https://github.com/apache/storm/commit/80adc6a73e981ee671fb35bbba2d8734bb914da0,apache/storm,2011-12-23,notes on transactionalspout implementation,-1,,ITransactionalSpout.java,,inline,"// TODO: acts identically to a bolt EXCEPT for the coordinator task which:
+//  -- keeps track of open transactions
+//  -- persists the state of committed transactions
+//  -- sends out batch and commit tuples",
+,,https://github.com/reactive-streams/reactive-streams-jvm/commit/089af0469b3e9e5111ae0b40734627879b5b29bf,reactive-streams/reactive-streams-jvm,2017-04-21,Fix spelling errors and clarify a couple of sentences,-1,,PublisherVerificationRules.java,,inline,"   * Asks for a {@code Publisher} that should emit exactly one item and complete (both within a
+---
+   * Asks for a {@code Publisher} that should emit exactly three items and complete (all within a
+---
+   * legally and otherwise there is no common agreement how to detect such heavy computation reliably.
+---
+   * <p>Note also that requesting and emission may happen concurrently and honoring this rule may require extra coordination within",
+,,https://github.com/google/guava/commit/bfcb6683c15a97e9121ab5a6714f7922a720f048,google/guava,2017-09-12,"The documentation of PredecessorsFunction and SuccessorsFunction now makes it clear that null nodes are forbidden.
+
+-------------
+Created by MOE: https://github.com/google/moe
+MOE_MIGRATED_REVID=168363735",-1,,PredecessorsFunction.java,,inline,"   * <p>The returned {@code iterable}, and its elements, must each be non-null.
+   *
+---
+   * <p>The returned {@code iterable} and its elements, must each be non-null.
+   *",
+,,https://github.com/apache/hbase/commit/9ba7651889844cb36ea8928a9f20f1c2e4d54721,apache/hbase,2019-06-13,HBASE-22565 Javadoc Warnings: @see cannot be used in inline documentation,-1,,HBaseCommonTestingUtility.java,,inline," * @see org.apache.hadoop.hbase.HBaseCommonTestingUtility
+ *
+---
+   * default behavior (such as setting the maxRecoveryErrorCount value). This is
+---
+   * @see ""https://issues.apache.org/jira/browse/HBASE-3020""
+---
+   * @see ""https://issues.apache.org/jira/browse/HBASE-4862""",
+,,https://github.com/openjdk/jdk/commit/6a4a8743562bd8f937542cdeb6557b3fe60e9a23,openjdk/jdk,2023-01-12,"8299034: Runtime::exec clarification of inherited environment
+
+Reviewed-by: alanb",-1,,ProcessBuilder.java,RedirectPipeImpl,inline,"     * The minimal set of system dependent environment variables
+     * may override the values provided in the environment.
+---
+     * The minimal set of system dependent environment variables
+     * may override the values provided in the environment.
+---
+     * The minimal set of system dependent environment variables
+     * may override the values provided in the environment.","    public ProcessBuilder redirectErrorStream(boolean redirectErrorStream) {
+        this.redirectErrorStream = redirectErrorStream;
+        return this;
+    }"
+,,https://github.com/camunda/camunda/commit/7f11d2e90e3586fc7044917c82d68c7c13f8580b,camunda/camunda,2025-03-12,"test: document reason
+
+ Reason about why Backup test is no multi db test",-1,,BackupRestoreIT.java,,javadoc,"/**
+ * This test is on purpose no {@link io.camunda.qa.util.multidb.MultiDbTest}, as we have special
+ * requirements on ES and OS, and need direct access.
+ *
+ * <ul>
+ *   <li>We need to configure ES/OS to allow local repositories.
+ *   <li>We need to create snapshot repositories with specific ES/OS clients.
+ *   <li>We need to create snapshots of the Zeebe exporter indices
+ * </ul>
+ *
+ * Furthermore, this test will not apply to RDBMS.
+ */",
+,,https://github.com/robolectric/robolectric/commit/da9cd404c0db2ebcef4ecfb50836de00b56622f1,robolectric/robolectric,2010-11-22,Clarify JavaDoc for innerText() a little.,-1,,ShadowTextView.java,ShadowTextView,javadoc,"    /**
+     * Returns the text string of this {@code TextView}.
+     *
+     * Robolectric extension.
+     */
+---
+     * Returns a string representation of this {@code View}. Unless overridden, it will be an empty string.
+---
+     * Robolectric extension.
+---
+     * Returns a string representation of this {@code ViewGroup} by concatenating all of the strings contained in all
+     * of the descendants of this {@code ViewGroup}.
+     *
+     * Robolectric extension.","    public boolean onKeyDown(int keyCode, KeyEvent event) {
+        if (onKeyListener != null) {
+            return onKeyListener.onKey(realView, keyCode, event);
+        } else {
+            return false;
+        }
+    }"
+,,https://github.com/apache/beam/commit/e971d8aa014cb0fe7df497c86c84bbb1e0004948,apache/beam,2018-06-14,A bit more documentation.,-1,,InMemoryJobService.java,,javadoc,"  /**
+   * Creates an InMemoryJobService.
+   *
+   * @param stagingServiceDescriptor Endpoint for the staging service.
+   * @param stagingServiceTokenProvider Function mapping a preparationId to a staging service token.
+   * @param invoker A JobInvoker that will actually create the jobs.
+   * @return A new InMemoryJobService.
+   */",
+,,https://github.com/apache/rocketmq/commit/1297970440b823a9c3e15c9df6bc8e04f5609ea5,apache/rocketmq,2018-10-31,add  note,-1,,MQPushConsumer.java,,inline,"     * This method will be removed in the version 5.0.0，because filterServer was removed,and method <code>subscribe(final String topic, final MessageSelector messageSelector)</code>
+     * is recommended.
+     *
+---
+    /**
+     * This method will be removed in the version 5.0.0，because filterServer was removed,and method <code>subscribe(final String topic, final MessageSelector messageSelector)</code>
+     * is recommended.
+     */",
+,,https://github.com/Alluxio/alluxio/commit/d841d6c773cd9aef16023cd7a080fda35b2e24fb,Alluxio/alluxio,2015-08-17,Update documentation to reflect changes.,-1,,WorkerClient.java,,inline,"   * @param masterClient a master client to retrieve user id and worker hostname info
+   * @param executorService an executor for the worker client's heartbeat thread
+   * @param conf the Tachyon Configuration to use
+   * @param clientMetrics metrics collection object for this client's operations",
+,,https://github.com/bitcoinj/bitcoinj/commit/f1f07df11b68eab98eb0db5a9138763ec78e6d82,bitcoinj/bitcoinj,2015-01-28,ECKey: extend the comment about why private keys of zero and one are now forbidden,-1,,ECKey.java,ECKey,inline,"            // Try and catch buggy callers or bad key imports, etc. Zero and one are special because these are often
+            // used as sentinel values and because scripting languages have a habit of auto-casting true and false to
+            // 1 and 0 or vice-versa. Type confusion bugs could therefore result in private keys with these values.","    protected ECKey(@Nullable BigInteger priv, ECPoint pub) {
+        if (priv != null) {
+            // Try and catch buggy callers or bad key imports, etc. Zero and one are special because these are often
+            // used as sentinel values and because scripting languages have a habit of auto-casting true and false to
+            // 1 and 0 or vice-versa. Type confusion bugs could therefore result in private keys with these values.
+            checkArgument(!priv.equals(BigInteger.ZERO));
+            checkArgument(!priv.equals(BigInteger.ONE));
+        }
+        this.priv = priv;
+        this.pub = new LazyECPoint(checkNotNull(pub));
+    }"
+,,https://github.com/oracle/graal/commit/a6bd771e7c992cd85fc463655c073616473861ce,oracle/graal,2018-08-13,changed comment to workaround difference between Eclipse CLI formatter and Eclipse DIE formatter,-1,,IntList.java,IntList,inline,"     * If {@code newSize > size()}, sufficient 0 elements are {@linkplain #add(int) added} until
+     * {@code size() == newSize}. If {@code newSize < size()}, the size is changed to
+     * {@code newSize}.","    public void set(int index, int value) {
+        if (index >= size) {
+            throw new IndexOutOfBoundsException(""Index: "" + index + "", Size: "" + size);
+        }
+        array[index] = value;
+    }"
+,,https://github.com/google/guava/commit/4b9da9148906ad483af308daf48d597046d306dd,google/guava,2011-12-05,"Fixed a tiny Javadoc typo. You might be asking yourself: why is he
+wasting his time with this? I... don't know.
+-------------
+Created by MOE: http://code.google.com/p/moe-java
+MOE_MIGRATED_REVID=25918269",-1,,ClusterException.java,is,inline, *     throw ClusterException.create(exceptions);," * void runManyThings(List&lt;ThingToRun&gt; thingsToRun) {
+ *   List&lt;Exception&gt; exceptions = Lists.newArrayList();
+ *   for (ThingToRun thingToRun : thingsToRun) {
+ *     try {
+ *       thingToRun.run();
+ *     } catch (Exception e) {
+ *       exceptions.add(e);
+ *     }
+ *   }
+ *   if (exceptions.size() > 0) {
+ *     throw ClusterException.create(exceptions);
+ *   }
+ * }"
+,,https://github.com/openjdk/jdk/commit/521751020df2f41e385f0bd10dcca2072960a40e,openjdk/jdk,2017-06-19,"8181894: java.desktop module documentation has links to technotes
+
+Reviewed-by: mchung",-1,,IIORegistry.java,,inline," * Copyright (c) 1999, 2017, Oracle and/or its affiliates. All rights reserved.
+---
+ * format in general, see the
+ * <a href=""{@docRoot}/../specs/jar/jar.html"">JAR File Specification</a>.
+---
+ * format in general, see the
+ * <a href=""{@docRoot}/../specs/jar/jar.html"">JAR File Specification</a>.
+---
+ * Copyright (c) 2000, 2017, Oracle and/or its affiliates. All rights reserved.
+---
+ * implementation using the {@link java.util.ServiceLoader} facility.
+---
+ * the {@link java.util.ServiceLoader} facility.
+---
+ *     <li>{@extLink i18n_overview Internationalization Overview}</li>
+ *     <li>{@extLink imf_overview Input Method Framework Overview}</li>",
+,,https://github.com/apache/beam/commit/c70d30bd3e6c0e5b349e975ead21315b7df5de2f,apache/beam,2020-03-26,"[BEAM-5422] Document DynamicDestinations.getTable uniqueness requirement
+
+Load job IDs are keyed by table (among other things), but not the
+destination. Thus multiple DestinationTs mapping to the same table will
+have the same BQ job ID. The first one will succeed, and the rest will
+seem to Beam as retries (no-ops because the job has already
+started/completed).",-1,,DynamicDestinations.java,SideInputAccessorViaProcessContext,javadoc,"  /**
+   * Returns a {@link TableDestination} object for the destination. May not return null. Return
+   * value needs to be unique to each destination: may not return the same {@link TableDestination}
+   * for different destinations.
+   */","  public Coder<DestinationT> getDestinationCoder() {
+    return null;
+  }"
+,,https://github.com/google/guice/commit/1dbfbce4886f34629b6ddc6f467d342a3ffdb23e,google/guice,2021-05-11,"Explain why ErrorsException is ignored in createJustInTimeBindingRecursive internal method.
+
+PiperOrigin-RevId: 373157192",-1,,InjectorImpl.java,ConvertedConstantBindingImpl,inline,"        // If JIT binding creation failed in parent injector(s), create the JIT binding in this
+        // injector instead.","    } else if (binding instanceof HasDependencies) {
+      return ((HasDependencies) binding).getDependencies();"
+,,https://github.com/oracle/graal/commit/f3ba9b4544821157cd031917097410f38cb7a629,oracle/graal,2018-07-10,Fix documentation issues.,-1,,ExecutionListener.java,Builder,inline,"         * Collect additional execution event data about return values. The return value may be
+         * accessed in {@link #onReturn(Consumer) OnReturn} events with
+         * {@link ExecutionEvent#getReturnValue()}.
+---
+ * The management package provides tools that monitor and instrument the behavior of guest language","        public Builder collectInputValues(boolean enabled) {
+            this.collectInputValues = enabled;
+            return this;
+        }"
+,,https://github.com/openjdk/jdk/commit/c3e64cb01c446d3ff75e09c5f9122f71d21f82f9,openjdk/jdk,2017-03-30,"8155052: add notes and links to j.u.Observer/Observable deprecation comments
+
+Reviewed-by: chegar",-1,,Observable.java,,inline," * For reactive streams style programming, see the
+ * {@link java.util.concurrent.Flow} API.",
+,,https://github.com/openjdk/jdk/commit/a8d8ffa8ad63f8f6308e2da224894fb2aded5d5c,openjdk/jdk,2025-05-16,"8356395: Spec needs to be clarified for InterfaceAddress class level API documentation and getBroadcast() method
+
+Reviewed-by: dfuchs",-1,,InterfaceAddress.java,,inline," * This class represents a Network Interface address. In the case of
+ * IPv4, this comprises the IP address, a subnet mask, and a broadcast
+ * address if the interface supports broadcast. In the case of IPv6,
+ * it comprises the IP address and a network prefix length.
+---
+     * <p>
+     * Certain network interfaces, such as the loopback interface, do not support
+     * broadcasting and will also return {@code null}.",
+,,https://github.com/google/guice/commit/02d505cd72ebdfe2ccfce560969797c4b00f2bc2,google/guice,2009-08-19,"Fixed typo in documentation.
+
+git-svn-id: https://google-guice.googlecode.com/svn/trunk@1065 d779f126-a31b-0410-b53b-1d3aecad763e",-1,,FactoryModuleBuilder.java,for,inline, *   install(new FactoryModuleBuilder().build(FruitFactory.class));," * protected void configure() {
+ *   install(new FactoryModuleBuilder().build(FruitFactory.class));
+ * }</pre>"
+,,https://github.com/jenkinsci/jenkins/commit/4808c2731d9cdb4b407fd7571b94394220dbd484,jenkinsci/jenkins,2008-06-24,"clarifying doc.
+
+git-svn-id: https://hudson.dev.java.net/svn/hudson/trunk/hudson/main@10364 71c3de6d-444a-0410-be80-ed276b4c234a",-1,,Hudson.java,Hudson,javadoc,"    /**
+     * {@inheritDoc}.
+     *
+     * Note that the look up is case-insensitive.
+     */","    public TopLevelItem getJobCaseInsensitive(String name) {
+        for (Entry<String, TopLevelItem> e : items.entrySet()) {
+            if(Functions.toEmailSafeString(e.getKey()).equalsIgnoreCase(Functions.toEmailSafeString(name)))
+                return e.getValue();
+        }
+        return null;
+    }"
+,,https://github.com/bazelbuild/bazel/commit/7fb50baaa00f92c6f009dcf1684427fc8fa1f301,bazelbuild/bazel,2023-04-19,"Add code comment for why the in-memory filesystem would not be able to create an output dir.
+
+PiperOrigin-RevId: 525553618
+Change-Id: Ie9102c39f7a0d4513ce68bcbaf214808600b95f0",-1,,ActionOutputDirectoryHelper.java,,inline,"   * Creates output directories for an action file system. The action file system uses an in-memory
+   * filesystem and sometimes it mixes a local filesystem, e.g. Build without the Bytes, ({@link
+   * com.google.devtools.build.lib.vfs.OutputService.ActionFileSystemType}). In the latter case,
+   * creating output directories could fail for the same reason as {@link #createOutputDirectories}.",
+,,https://github.com/apache/jmeter/commit/ce199c0d07bdb1d24f170cf4db578223874b850d,apache/jmeter,2011-12-10,"Document usage
+
+git-svn-id: https://svn.apache.org/repos/asf/jmeter/trunk@1212782 13f79535-47bb-0310-9956-ffa450edef68
+
+Former-commit-id: ab09599387b1acce936acd7dd0a70e511fac3f2f",-1,,JMeterContextService.java,JMeterContextService,inline,"     * Replace Thread Context by the parameter.
+     * Currently only used by {@link org.apache.jmeter.protocol.http.sampler.HTTPSamplerBase.ASyncSample HTTPSamplerBase.ASyncSample}","    static void removeContext(){ // Currently only used by JMeterThread
+        threadContext.remove();
+    }"
+,,https://github.com/bazelbuild/bazel/commit/0b331fd8721d022f740b501fd2ba0332c9a018d0,bazelbuild/bazel,2025-05-01,"Note weakness in Starlark options parsing.
+
+PiperOrigin-RevId: 753583366
+Change-Id: I3919bef50eba8ae7124c0b0a5b88d29c21f619c5",-1,,StarlarkOptionsParser.java,Builder,inline,"    // This isn't resilient against labels with the ""="" character in them, e.g.
+    // ""//pkg/prefix=suffix"". See https://bazel.build/concepts/labels#target-names.","  public boolean parse() throws InterruptedException, OptionsParsingException {
+    return parseGivenArgs(nativeOptionsParser.getSkippedArgs());
+  }"
+,,https://github.com/grpc/grpc-java/commit/609f31a5785d77940031e24e94d24f94f985448f,grpc/grpc-java,2015-09-02,Document valid characters for AsciiMarshaller,-1,,Metadata.java,,inline,"   * <p>This should be used with ASCII strings that only contain the characters listed in the class
+   * comment of {@link AsciiMarshaller}. Otherwise the output may be considered invalid and
+   * discarded by the transport, or the call may fail.
+---
+   * <p>Names are ASCII string bytes that contains only the characters listed in the class comment
+   * of {@link Key}. If the name ends with {@code ""-bin""}, the value can be raw binary.  Otherwise,
+   * the value must contain only characters listed in the class comments of {@link AsciiMarshaller}
+---
+   * following characters:
+   * <ul>
+   *   <li>Space: {@code 0x20}, but must not be at the beginning or at the end of the value.</li>
+   *   <li>ASCII visible characters ({@code 0x21-0x7E}), but excluding comma ({@code "","", 0x2C}).
+   * </ul>
+   * <p>Note this has to be the subset of valid characters in {@code field-content} from RFC 7230
+   * Section 3.2.
+---
+     * Serialize a metadata value to a ASCII string that contains only the characters listed in the
+     * class comment of {@link AsciiMarshaller}. Otherwise the output may be considered invalid and
+     * discarded by the transport, or the call may fail.",
+,,https://github.com/debezium/debezium/commit/921df157dcf5fc5b1e8fc9055937a45cae303335,debezium/debezium,2025-08-28,DBZ-9398 Add explanation why RejectedExecutionException is not caught,-1,,AsyncEmbeddedEngine.java,AsyncEmbeddedEngine,inline,"                // We may hit here also RejectedExecutionException when the is another batch submitted for processing,
+                // but for now we don't catch it and let pass it to the user in CompletionCallback so the user can react to it.","    private void startSourceTasks(final List<EngineSourceTask> tasks) throws Exception {
+        LOGGER.debug(""Starting source connector tasks."");
+        final ExecutorCompletionService<Void> taskCompletionService = new ExecutorCompletionService(taskService);
+        // Set the TCCL for the threads while starting the tasks.
+        final ClassLoader originalTccl = Thread.currentThread().getContextClassLoader();
+        for (EngineSourceTask task : tasks) {
+            taskCompletionService.submit(() -> {
+                try {
+                    Thread.currentThread().setContextClassLoader(this.classLoader);
+                    task.connectTask().start(task.context().config());
+                }
+                finally {
+                    Thread.currentThread().setContextClassLoader(originalTccl);
+                }
+                return null;
+            });
+        }
+
+        final long taskStartupTimeout = config.getLong(AsyncEngineConfig.TASK_MANAGEMENT_TIMEOUT_MS);
+        LOGGER.info(""Waiting max. for {} ms for individual source tasks to start."", taskStartupTimeout);
+        final int nTasks = tasks.size();
+        Exception error = null;
+        int failedTasks = 0;
+        // To avoid leaked resources, we have to ensure that all tasks that were scheduled to start are really started before we continue with the execution in
+        // the main (engine) thread and change engine state. If any of the scheduled tasks has failed, catch the exception, wait for other tasks to start and then
+        // re-throw the exception and let engine stop already running tasks gracefully during the engine shutdown.
+        for (int i = 0; i < nTasks; i++) {
+            try {
+                final Future<Void> taskFuture = taskCompletionService.poll(taskStartupTimeout, TimeUnit.MILLISECONDS);
+                if (taskFuture != null) {
+                    taskFuture.get(); // we need to retrieve the results to propagate eventual exceptions
+                }
+                else {
+                    throw new InterruptedException(""Time out while waiting for source task to start."");
+                }
+
+                LOGGER.debug(""Started task #{} out of {} tasks."", i + 1, nTasks);
+            }
+            catch (Exception e) {
+                LOGGER.debug(""Task #{} (out of {} tasks) failed to start. Failed with"", i + 1, nTasks, e);
+... (省略: 全62行)"
+,,https://github.com/deepjavalibrary/djl/commit/81bcc25bfc986b26d116b9ee8149e55a9309d202,deepjavalibrary/djl,2020-02-10,Correction/clarification of the doc of batchFlatten,-1,,Blocks.java,Blocks,inline,"     * Inflates the 1-D flattened {@link ai.djl.ndarray.NDArray} provided as input to a 2-D {@link ai.djl.ndarray.NDArray} of shape (batch, size).
+---
+     * @param array a 1-D flattened array of size batch * size {@link NDList}
+---
+     * @param size the dimension of the input
+     * @return a 2-D {@link NDList} that contains the inflated {@link ai.djl.ndarray.NDArray}","    private static NDList batchFlatten(NDList arrays) {
+        long batch = arrays.head().size(0);
+        return batchFlatten(arrays, batch, -1);
+    }"
+,,https://github.com/oracle/graal/commit/dfbd895af3f1723142ec2d4f8e147c7d717c8159,oracle/graal,2014-12-31,Truffle: typo in documentation of PrimitiveValueProfile.,-1,,PrimitiveValueProfile.java,,inline, * Note that for {@code float} and {@code double} values we compare primitive equality via,
+,,https://github.com/ReactiveX/RxJava/commit/52cef142154655900ba8669dce631aca7142f9b6,ReactiveX/RxJava,2013-03-12,"Confusing Javadoc for `toObservable(Future)` methods
+
+https://github.com/Netflix/RxJava/issues/148",-1,,Observable.java,ThrowObservable,inline,"     * <p>
+     * This is blocking so the Subscription returned when calling {@link #subscribe(Observer)} does nothing.
+---
+     * <p>
+     * This is blocking so the Subscription returned when calling {@link #subscribe(Observer)} does nothing.","    public static <T> Observable<T> toObservable(Iterable<T> iterable) {
+        return _create(OperationToObservableIterable.toObservableIterable(iterable));
+    }"
+,,https://github.com/google/error-prone/commit/09901faab0b50d3471320a69be78694d43a8cdf3,google/error-prone,2018-11-02,"Fix incorrect @throws documentation on Description.Builder classes.
+
+RELNOTES: n/a
+
+-------------
+Created by MOE: https://github.com/google/moe
+MOE_MIGRATED_REVID=217291955",-1,,Description.java,Description,inline,"     * @throws NullPointerException if {@code fix} is {@code null}
+---
+     * @throws NullPointerException if {@code fix} is {@code null}
+---
+     * @throws NullPointerException if {@code fixes} or any of its elements are {@code null}","  private static String linkTextForDiagnostic(String linkUrl) {
+    return isNullOrEmpty(linkUrl) ? null : ""  (see "" + linkUrl + "")"";
+  }"
+,,https://github.com/graphhopper/graphhopper/commit/a24b0d026b0ca6aa5fab17cdb1ecb3ce51a5206c,graphhopper/graphhopper,2019-10-02,Clarify comment about edge filter ids in abstract edge-based CH algo,-1,,AbstractBidirectionEdgeCHNoSOD.java,AbstractBidirectionEdgeCHNoSOD,inline,"        // important: we have to use different filter ids for the edge explorers here than we use for the edge
+        // explorers in the superclass, otherwise this will not work with QueryGraph's edge explorer cache, see #1623.","    public AbstractBidirectionEdgeCHNoSOD(Graph graph, TurnWeighting weighting) {
+        super(graph, weighting, TraversalMode.EDGE_BASED);
+        this.turnWeighting = weighting;
+        // the inner explorers will run on the base- (or query/base-)graph edges only
+        Graph baseGraph = graph.getBaseGraph();
+        // we need extra edge explorers, because they get called inside a loop that already iterates over edges
+        // important: we have to use different filter ids for the edge explorers here than we use for the edge
+        // explorers in the superclass, otherwise this will not work with QueryGraph's edge explorer cache, see #1623.
+        innerInExplorer = baseGraph.createEdgeExplorer(DefaultEdgeFilter.inEdges(flagEncoder).setFilterId(1));
+        innerOutExplorer = baseGraph.createEdgeExplorer(DefaultEdgeFilter.outEdges(flagEncoder).setFilterId(1));
+    }"
+,,https://github.com/openjdk/jdk/commit/2ea1ba10a2cfd39c2125278c090b5488a0794f8d,openjdk/jdk,2010-10-12,"6887853: javadoc for java.lang.Classloader should be more clear
+
+Updated the relevant javadoc description of java.lang.ClassLoader class w/ additional clarification.
+
+Reviewed-by: mullan",-1,,ClassLoader.java,,inline," * Copyright (c) 1994, 2010, Oracle and/or its affiliates. All rights reserved.
+---
+ * method. Note that the <tt>ClassLoader</tt> class is registered as parallel
+ * capable by default. However, its subclasses still need to register themselves
+ * if they are parallel capable. <br>
+ * In environments in which the delegation model is not strictly
+ * hierarchical, class loaders need to be parallel capable, otherwise class
+---
+     * Registers the caller as parallel capable.</p>
+     * The registration succeeds if and only if all of the following
+     * conditions are met: <br>
+     * 1. no instance of the caller has been created</p>
+     * 2. all of the super classes (except class Object) of the caller are
+     * registered as parallel capable</p>
+     * Note that once a class loader is registered as parallel capable, there
+     * is no way to change it back. </p>",
+,,https://github.com/apache/jmeter/commit/e9a89b9097b1229f9b9e83eadcf46233095e8d88,apache/jmeter,2010-02-08,"Javadoc clarification
+
+git-svn-id: https://svn.apache.org/repos/asf/jakarta/jmeter/trunk@907679 13f79535-47bb-0310-9956-ffa450edef68
+
+Former-commit-id: a6b30c10e57f080b8964ab4ad73b13cb769d6b97",-1,,HTTPSampleResult.java,,javadoc,"    /**
+     * The raw value of the Location: header; may be null.
+     * This is supposed to be an absolute URL:
+     * <a href=""http://www.w3.org/Protocols/rfc2616/rfc2616-sec14.html#sec14.30"">RFC2616 sec14.30</a>
+     * but is often relative.
+     */",
+,,https://github.com/bazelbuild/bazel/commit/b622595680769bb1f4378abe77d98a0069fe8fa0,bazelbuild/bazel,2016-03-01,"Remove reference to web browsers in bazel documentation.
+
+--
+MOS_MIGRATED_REVID=115912069",-1,,ExecutionInfoProvider.java,ExecutionInfoProvider,inline,"   * platforms, etc. Rule tags, such as ""requires-XXX"", may also be added","  public ExecutionInfoProvider(Map<String, String> requirements) {
+    this.executionInfo = ImmutableMap.copyOf(requirements);
+  }"
+,,https://github.com/ikarus23/MifareClassicTool/commit/12f8f66cd111307313d46a8ec5396b0aee3fdbc7,ikarus23/MifareClassicTool,2020-11-23,Added notes to SAK = byte nr. 5 in block 0 issue.,-1,,CloneUidTool.java,CloneUidTool,inline,"        // NOTE: Tags might not appear to be genuine/valid NXP/Infinion tags.
+        // For a 4b UID/1k MFC tag the SAK should be 0x08 but the ""corresponding"" byte in
+        // block 0 (byte nr. 5) must by 0x88. This is not possible with some gen2 tags,
+        // because they use byte nr. 5 as SAK value.","    private String calcSakAtqa(int uidLen, int tagSize) {
+        if ((uidLen != 4 && uidLen != 7) || (
+                tagSize != MifareClassic.SIZE_MINI &&
+                tagSize != MifareClassic.SIZE_1K &&
+                tagSize != MifareClassic.SIZE_2K &&
+                tagSize != MifareClassic.SIZE_4K)) {
+            return null;
+        }
+
+        // ATQA.
+        String atqa = null;
+        if (uidLen == 4 && (tagSize == MifareClassic.SIZE_1K ||
+                tagSize == MifareClassic.SIZE_2K ||
+                tagSize == MifareClassic.SIZE_MINI)) {
+            atqa = ""0400"";
+        } else if (uidLen == 4 && tagSize == MifareClassic.SIZE_4K) {
+            atqa = ""0200"";
+        } else if (uidLen == 7 && (tagSize == MifareClassic.SIZE_1K ||
+                tagSize == MifareClassic.SIZE_2K ||
+                tagSize == MifareClassic.SIZE_MINI)) {
+            atqa = ""4400"";
+        } else if (uidLen == 7 && tagSize == MifareClassic.SIZE_4K) {
+            atqa = ""4200"";
+        }
+
+        // SAK.
+        // NOTE: Tags might not appear to be genuine/valid NXP/Infinion tags.
+        // For a 4b UID/1k MFC tag the SAK should be 0x08 but the ""corresponding"" byte in
+        // block 0 (byte nr. 5) must by 0x88. This is not possible with some gen2 tags,
+        // because they use byte nr. 5 as SAK value.
+        String sak = null;
+        if (tagSize == MifareClassic.SIZE_MINI) {
+            sak = ""09"";
+        } else if (tagSize == MifareClassic.SIZE_1K || tagSize == MifareClassic.SIZE_2K) {
+            sak = ""08"";
+        } else if (tagSize == MifareClassic.SIZE_4K) {
+            sak = ""18"";
+        }
+
+        if (sak == null || atqa == null) {
+... (省略: 全44行)"
+,,https://github.com/material-components/material-components-android/commit/0eb5c1ae7509e9a973c703ee38e30afd05d907e1,material-components/material-components-android,2018-04-30,"Fix typo in ChipDrawable documentation s/getIntrinsicWidth/getIntrinsicHeight
+
+PiperOrigin-RevId: 193965067",-1,,ChipDrawable.java,,inline, *       ChipDrawable#getIntrinsicHeight()} and {@link ChipDrawable#getIntrinsicWidth()}.,
+,,https://github.com/camunda/camunda/commit/491f08171b1884d7dac7bf0451366d4d298d28b8,camunda/camunda,2020-10-12,chore(atomix): document explicit flushes,-1,,RaftContext.java,RaftContext,inline,"        // writer's buffer is isolated from readers
+---
+    // because writer's buffer is isolated from readers","  public long setCommitIndex(final long commitIndex) {
+    checkArgument(commitIndex >= 0, ""commitIndex must be positive"");
+    final long previousCommitIndex = this.commitIndex;
+    if (commitIndex > previousCommitIndex) {
+      this.commitIndex = commitIndex;
+      logWriter.commit(Math.min(commitIndex, logWriter.getLastIndex()));
+      if (raftLog.isFlushOnCommit() && isLeader()) {
+        // writer's buffer is isolated from readers
+        logWriter.flush();
+      }
+      final long configurationIndex = cluster.getConfiguration().index();
+      if (configurationIndex > previousCommitIndex && configurationIndex <= commitIndex) {
+        cluster.commit();
+      }
+      setFirstCommitIndex(commitIndex);
+      // On start up, set the state to READY after the follower has caught up with the leader
+      // https://github.com/zeebe-io/zeebe/issues/4877
+      if (state == State.ACTIVE && commitIndex >= firstCommitIndex) {
+        state = State.READY;
+        stateChangeListeners.forEach(l -> l.accept(state));
+      }
+      replicationMetrics.setCommitIndex(commitIndex);
+    }
+    return previousCommitIndex;
+  }"
+,,https://github.com/h2database/h2database/commit/89695a09eebb9121178d1911d67b4b34b7fc9091,h2database/h2database,2013-12-18,Improved documentation.,-1,,Server.java,Server,inline,"     * Supported options are:
+     * -webPort, -webSSL, -webAllowOthers, -webDaemon,
+     * -trace, -ifExists, -baseDir, -properties.
+     * See the main method for details.
+---
+     * Supported options are:
+     * -tcpPort, -tcpSSL, -tcpPassword, -tcpAllowOthers, -tcpDaemon,
+     * -trace, -ifExists, -baseDir, -key.
+     * See the main method for details.
+---
+     * Supported options are:
+     * -pgPort, -pgAllowOthers, -pgDaemon,
+     * -trace, -ifExists, -baseDir, -key.
+     * See the main method for details.","    public String getStatus() {
+        StringBuilder buff = new StringBuilder();
+        if (!started) {
+            buff.append(""Not started"");
+        } else if (isRunning(false)) {
+            buff.append(service.getType()).
+                append("" server running at "").
+                append(service.getURL()).
+                append("" ("");
+            if (service.getAllowOthers()) {
+                buff.append(""others can connect"");
+            } else {
+                buff.append(""only local connections"");
+            }
+            buff.append(')');
+        } else {
+            buff.append(""The "").
+                append(service.getType()).
+                append("" server could not be started. Possible cause: another server is already running at "").
+                append(service.getURL());
+        }
+        return buff.toString();
+    }"
+,,https://github.com/grpc/grpc-java/commit/3a5f115dbcd44c18e0642456c98f19c52f66732b,grpc/grpc-java,2017-07-07,core: clarify security methods on channel and server,-1,,ManagedChannelBuilder.java,ManagedChannelBuilder,inline,"   *
+   * @throws UnsupportedOperationException if plaintext mode is not supported.
+---
+   * @throws UnsupportedOperationException if the server does not support TLS.","  public static ManagedChannelBuilder<?> forTarget(String target) {
+    return ManagedChannelProvider.provider().builderForTarget(target);
+  }"
+,,https://github.com/pmd/pmd/commit/b5761ec2a1523d4a5d68ab249e1d41819fc250c3,pmd/pmd,2017-11-08,Fix documentation,-1,,RuleFactory.java,,inline," * Builds rules from rule XML nodes.
+---
+     * <p>Notes: The ruleset name is not set here. Exceptions raised from this method indicate invalid XML structure,
+---
+     * @return A new instance of the rule described by this element",
+,,https://github.com/openjdk/jdk/commit/394ce5f948c21b3861d76dd8db57957efa1df979,openjdk/jdk,2022-02-15,"8280825: Modules that ""provide"" ToolProvider should document the name that can be used
+
+Reviewed-by: jjg, lancea, alanb",-1,,module-info.java,,inline," * Copyright (c) 2014, 2022, Oracle and/or its affiliates. All rights reserved.
+---
+ *     Use {@link java.util.spi.ToolProvider#findFirst ToolProvider.findFirst(""javac"")}
+ *     to obtain an instance of a {@code ToolProvider} that provides the equivalent
+ *     of command-line access to the {@code javac} tool.
+---
+ * @provides java.util.spi.ToolProvider
+ *     Use {@link java.util.spi.ToolProvider#findFirst ToolProvider.findFirst(""jar"")}
+ *     to obtain an instance of a {@code ToolProvider} that provides the equivalent
+ *     of command-line access to the {@code jar} tool.
+ *
+---
+ *     Use {@link java.util.spi.ToolProvider#findFirst ToolProvider.findFirst(""javadoc"")}
+ *     to obtain an instance of a {@code ToolProvider} that provides the equivalent
+ *     of command-line access to the {@code javadoc} tool.
+---
+ *     Use {@link java.util.spi.ToolProvider#findFirst ToolProvider.findFirst(""javap"")}
+ *     or {@link java.util.spi.ToolProvider#findFirst ToolProvider.findFirst(""jdeps"")}
+ *     to obtain an instance of a {@code ToolProvider} that provides the equivalent
+ *     of command-line access to the {@code javap} or {@code jdeps} tool.
+---
+ * Copyright (c) 2015, 2022, Oracle and/or its affiliates. All rights reserved.
+---
+ *     Use {@link java.util.spi.ToolProvider#findFirst ToolProvider.findFirst(""jlink"")}
+ *     to obtain an instance of a {@code ToolProvider} that provides the equivalent
+ *     of command-line access to the {@code jlink} tool.
+---
+ * Copyright (c) 2018, 2022, Oracle and/or its affiliates. All rights reserved.
+---
+ * @provides java.util.spi.ToolProvider
+ *     Use {@link java.util.spi.ToolProvider#findFirst ToolProvider.findFirst(""jpackage"")}
+ *     to obtain an instance of a {@code ToolProvider} that provides the equivalent
+ *     of command-line access to the {@code jpackage} tool.",
+,,https://github.com/SeleniumHQ/selenium/commit/1cf985357cc776682fd329493f8caaf00c9fb582,SeleniumHQ/selenium,2014-10-29,Documenting exceptions. Fixes issue 8090,-1,,Select.java,Select,inline,"   * @throws NoSuchElementException If no option is selected
+---
+   * @throws NoSuchElementException If no matching option elements are found
+---
+   * @throws NoSuchElementException If no matching option elements are found
+---
+   * @throws NoSuchElementException If no matching option elements are found
+---
+   * @throws NoSuchElementException If no matching option elements are found
+---
+   * @throws NoSuchElementException If no matching option elements are found
+---
+   * @throws NoSuchElementException If no matching option elements are found","  public List<WebElement> getAllSelectedOptions() {
+    List<WebElement> toReturn = new ArrayList<WebElement>();
+
+    for (WebElement option : getOptions()) {
+      if (option.isSelected()) {
+        toReturn.add(option);
+      }
+    }
+
+    return toReturn;
+  }"
+,,https://github.com/ReactiveX/RxJava/commit/bb89744b6b934fa43a187f2d5199c62bcf31e5d3,ReactiveX/RxJava,2015-08-06,Add links to page that explains The Observable Contract,-1,,Observable.java,type,inline,"     * Forces an Observable's emissions and notifications to be serialized and for it to obey
+     * <a href=""http://reactivex.io/documentation/contract.html"">the Observable contract</a> in other ways.
+---
+     * purposes, use {@link #subscribe(Subscriber)} which ensures
+     * <a href=""http://reactivex.io/documentation/contract.html"">the Observable contract</a> and other
+     * functionality.
+---
+ * This assumes Spsc or Spmc usage. This means only a single producer calling the on* methods. This is the Rx
+ * contract of an Observer (see http://reactivex.io/documentation/contract.html). Concurrent invocations of
+ * on* methods will not be thread-safe.
+---
+         * (see http://reactivex.io/documentation/contract.html) as this is the final subscribe in the chain.
+---
+ * complies with <a href=""http://reactivex.io/documentation/contract.html"">the Observable contract</a>.
+---
+ * to non-serialized calls, which violates <a href=""http://reactivex.io/documentation/contract.html"">the
+ * Observable contract</a> and creates an ambiguity in the resulting Subject.
+---
+     * lead to non-serialized calls, which violates
+     * <a href=""http://reactivex.io/documentation/contract.html"">the Observable contract</a> and creates an
+     * ambiguity in the resulting Subject.
+---
+     * To protect a {@code Subject} from this danger, you can convert it into a {@code SerializedSubject} with
+     * code like the following:","    public final <R> Observable<R> scan(R initialValue, Func2<R, ? super T, R> accumulator) {
+        return lift(new OperatorScan<R, T>(initialValue, accumulator));
+    }"
+,,https://github.com/jetty/jetty.project/commit/a93b35d59e0d633afeb17ad77f2a0d4462ba9281,jetty/jetty.project,2015-08-24,"Improved documentation regarding the effects of ContentProvider.getLength()
+on other HTTP headers such as Content-Length.",-1,,ContentProvider.java,,inline," * <p>{@link ContentProvider} provides a source of request content.</p>
+ * <p>Implementations should return an {@link Iterator} over the request content.
+---
+ * completed (either successfully or failed).</p>
+ * <p>Applications should rely on utility classes such as {@link ByteBufferContentProvider}
+ * or {@link PathContentProvider}.</p>
+ * <p>{@link ContentProvider} provides a {@link #getLength() length} of the content
+ * it represents.
+ * If the length is positive, it typically overrides any {@code Content-Length}
+ * header set by applications; if the length is negative, it typically removes
+ * any {@code Content-Length} header set by applications, resulting in chunked
+ * content (i.e. {@code Transfer-Encoding: chunked}) being sent to the server.</p>",
+,,https://github.com/google/ExoPlayer/commit/d37c18abfe6cbfc869a91e71f7bff7add9a68128,google/ExoPlayer,2019-09-05,"Clarify LoadErrorHandlingPolicy's loadDurationMs javadocs
+
+PiperOrigin-RevId: 266797383",-1,,LoadErrorHandlingPolicy.java,,inline,"   * @param loadDurationMs The duration in milliseconds of the load from the start of the first load
+   *     attempt up to the point at which the error occurred.",
+,,https://github.com/williamfiset/Algorithms/commit/af0c0eb150dd4f411d3583443fcdc6300c1f6c1b,williamfiset/Algorithms,2019-10-29,"Corrected the documentation at line no 57
+
+It should have been ""// Add an element to this dynamic array"" instead of ""// An element to this dynamic array"". I think that this just happened by mistake and doesn't confuses but still I thought that when a correction can be made, so why not to do it.",-1,,IntArray.java,IntArray,inline,  // Add an element to this dynamic array,"  public void set(int index, int elem) {
+    arr[index] = elem;
+  }"
+,,https://github.com/bazelbuild/bazel/commit/35c1aa8cdd6057acdc0e7035ec766f616052c127,bazelbuild/bazel,2016-05-20,"Use correct rule name for $java_import_base attribute documentation.
+
+--
+MOS_MIGRATED_REVID=122772865",-1,,JavaImportBaseRule.java,JavaImportBaseRule,block,"        /* <!-- #BLAZE_RULE($java_import_base).ATTRIBUTE(jars) -->
+---
+        /* <!-- #BLAZE_RULE($java_import_base).ATTRIBUTE(srcjar) -->
+---
+        /* <!-- #BLAZE_RULE($java_import_base).ATTRIBUTE(neverlink) -->
+---
+        /* <!-- #BLAZE_RULE($java_import_base).ATTRIBUTE(constraints) -->","  public RuleClass build(Builder builder, RuleDefinitionEnvironment environment) {
+    return builder
+        .requiresConfigurationFragments(JavaConfiguration.class, CppConfiguration.class)
+        .add(attr("":host_jdk"", LABEL)
+            .cfg(HOST)
+            .value(JavaSemantics.HOST_JDK))
+        /* <!-- #BLAZE_RULE($java_import_base).ATTRIBUTE(jars) -->
+        The list of JAR files provided to Java targets that depend on this target.
+        <!-- #END_BLAZE_RULE.ATTRIBUTE --> */
+        .add(attr(""jars"", LABEL_LIST)
+            .mandatory()
+            .allowedFileTypes(JavaSemantics.JAR))
+        /* <!-- #BLAZE_RULE($java_import_base).ATTRIBUTE(srcjar) -->
+        A JAR file that contains source code for the compiled JAR files.
+        <!-- #END_BLAZE_RULE.ATTRIBUTE --> */
+        .add(attr(""srcjar"", LABEL)
+            .allowedFileTypes(JavaSemantics.SOURCE_JAR, JavaSemantics.JAR)
+            .direct_compile_time_input())
+        .removeAttribute(""deps"")  // only exports are allowed; nothing is compiled
+        /* <!-- #BLAZE_RULE($java_import_base).ATTRIBUTE(neverlink) -->
+        Only use this library for compilation and not at runtime.
+        Useful if the library will be provided by the runtime environment
+        during execution. Examples of libraries like this are IDE APIs
+        for IDE plug-ins or <code>tools.jar</code> for anything running on
+        a standard JDK.
+        <!-- #END_BLAZE_RULE.ATTRIBUTE --> */
+        .add(attr(""neverlink"", BOOLEAN).value(false))
+        /* <!-- #BLAZE_RULE($java_import_base).ATTRIBUTE(constraints) -->
+        Extra constraints imposed on this rule as a Java library.
+        <!-- #END_BLAZE_RULE.ATTRIBUTE --> */
+        .add(attr(""constraints"", STRING_LIST)
+            .orderIndependent()
+            .nonconfigurable(""used in Attribute.validityPredicate implementations (loading time)""))
+        .advertiseProvider(JavaSourceInfoProvider.class)
+        .advertiseProvider(JavaCompilationArgsProvider.class)
+        .build();
+  }"
+,,https://github.com/google/ExoPlayer/commit/f599155bbfcbe727a802bbb0ae30700a49bdd834,google/ExoPlayer,2020-05-14,"Document the sample data format for samples with supplemental data
+
+PiperOrigin-RevId: 311298802",-1,,TrackOutput.java,,javadoc,"  /**
+   * Sample supplemental data.
+   *
+   * <p>If a sample contains supplemental data, the format of the entire sample data will be:
+   *
+   * <ul>
+   *   <li>If the sample has the {@link C#BUFFER_FLAG_ENCRYPTED} flag set, all encryption
+   *       information.
+   *   <li>(4 bytes) {@code sample_data_size}: The size of the actual sample data, not including
+   *       supplemental data or encryption information.
+   *   <li>({@code sample_data_size} bytes): The media sample data.
+   *   <li>(remaining bytes) The supplemental data.
+   * </ul>
+   */",
+,,https://github.com/jenkinsci/jenkins/commit/28dbb672caf1041a537be015e69f7d232dc8a53b,jenkinsci/jenkins,2008-05-18,"clarifying the role of Computer a little.
+
+git-svn-id: https://hudson.dev.java.net/svn/hudson/trunk/hudson/main@9405 71c3de6d-444a-0410-be80-ed276b4c234a",-1,,Computer.java,,inline, * Represents the running state of a remote computer that holds {@link Executor}s.,
+,,https://github.com/Alluxio/alluxio/commit/0912ee36a82e20a9a0d2d4b5c53e779f3789d20c,Alluxio/alluxio,2016-02-24,add documentation for use of DelegateToFileSystem interface.,-1,,AlluxioFs.java,,inline,"// TODO(pfxuan): DelegateToFileSystem is a private/unstable interface.
+// For long term solution, we need to rewrite AlluxioFs by extending Hadoop
+// AbstractFileSystem directly.
+// https://hadoop.apache.org/docs/current/api/org/apache/hadoop/fs/AbstractFileSystem.html",
+,,https://github.com/camunda/camunda/commit/0bac1600091b9e0eb747893ae51daa09e0c29dee,camunda/camunda,2023-02-02,docs(journal): clarify segment file vs descriptor id,-1,,SegmentFile.java,SegmentFile,javadoc,"  /**
+   * Returns the segment's file id or -1 if the log segment name was not correctly formatted. Please
+   * note that this is not the same as the actual id of the segment that can be found in the {@link
+   * SegmentDescriptor}. Due to async preparation of the next segment before use, the file id can be
+   * larger than the actual id.
+   */","  public static boolean isSegmentFile(final String journalName, final String fileName) {
+    checkNotNull(journalName, ""journalName cannot be null"");
+    checkNotNull(fileName, ""fileName cannot be null"");
+
+    if (getSegmentIdFromPath(fileName) == -1) {
+      return false;
+    }
+
+    return fileName.startsWith(journalName);
+  }"
+,,https://github.com/grpc/grpc-java/commit/96a32ed768f7ba8cc23660e6d64ad08a7e6790db,grpc/grpc-java,2020-05-07,"core/doc: clarify when ClientCall.cancel() can be called.
+
+The original javadoc may be misunderstood as ""one must call
+halfClose() before calling cancel()"".",-1,,ClientCall.java,Listener,inline,"   * call. Cancellation is permitted even if previously {@link #halfClose}d. Cancelling an already
+   * {@code cancel()}ed {@code ClientCall} has no effect.","   * <p>Since {@link Metadata} is not thread-safe, the caller must not access (read or write) {@code
+   * headers} after this point."
+,,https://github.com/openjdk/jdk/commit/093f47328862093662258099809577769db14cc5,openjdk/jdk,2018-01-02,"8182362: Update CipherOutputStream Usage
+
+Clarify spec of CipherOutputStream in Javadoc comments
+
+Reviewed-by: ascarpino",-1,,CipherOutputStream.java,,inline," * Copyright (c) 1997, 2017, Oracle and/or its affiliates. All rights reserved.
+---
+ * that are not thrown by its ancestor classes. In particular, this
+ * class catches BadPaddingException and other exceptions thrown by
+ * failed integrity checks during decryption. These exceptions are not
+ * re-thrown, so the client will not be informed that integrity checks
+ * failed. Because of this behavior, this class may not be suitable
+ * for use with decryption in an authenticated mode of operation (e.g. GCM)
+ * if the application requires explicit notification when authentication
+ * fails. Such an application can use the Cipher API directly as an
+ * alternative to using this class.",
+,,https://github.com/stanfordnlp/CoreNLP/commit/e08eded7657483ab0f779e99fc2c0bb70541a961,stanfordnlp/CoreNLP,2023-10-24,"Add documentation on the morphoFeatures when updating the morphological features using Ssurgeon.  Currently, there is no way to update features without wiping out the entire features map.  This could be changed if needed",-1,,Ssurgeon.java,,inline," *   {@code -morphofeatures ...} will set the features to be exactly as written.  TODO: if anyone
+ *   needs the ability to add or remove features without resetting the entire features map,
+ *   please file an issue on github.",
+,,https://github.com/PaperMC/Paper/commit/10ae864f522c277932959db5ac97df4df44c5d2f,PaperMC/Paper,2020-01-28,"Clarify documentation regarding getMaterial with legacyName = true
+
+By: md_5 <git@md-5.net>",-1,,Material.java,of,inline,"     * This is a normal lookup, names must be the precise name they are given in
+     * the enum (but optionally including the LEGACY_PREFIX if legacyName is
+     * true).
+     * <p>
+     * If legacyName is true, then the lookup will be against legacy materials,
+     * but the returned Material will be a modern material (ie this method is
+     * useful for updating stored data).
+---
+     * @param legacyName whether this is a legacy name lookup
+---
+     * @param legacyName whether this is a legacy name (see
+     * {@link #getMaterial(java.lang.String, boolean)}","    public static Material getMaterial(@NotNull final String name) {
+        return getMaterial(name, false);
+    }"
+,,https://github.com/openjdk/jdk/commit/3f8b3e55276336cbb814d3b746d4337678389969,openjdk/jdk,2024-08-06,"8337887: [JVMCI] Clarify jdk.vm.ci.code.Architecture.getName javadoc
+
+Reviewed-by: never",-1,,AArch64.java,,inline," *
+ * The value returned by {@code Architecture#getName} for an instance of this class is {@code ""aarch64""}.
+---
+ *
+ * The value returned by {@code Architecture#getName} for an instance of this class is {@code ""AMD64""}.
+---
+     * @return a lowercase version of {@linkplain #getName name}
+---
+    /// Gets the name of this architecture. The value returned for
+    /// each architecture is shown in the table below.
+    ///
+    /// | Name      | Receiver type               |
+    /// |-----------|-----------------------------|
+    /// | ""aarch64"" | [jdk.vm.ci.aarch64.AArch64] |
+    /// | ""AMD64""   | [jdk.vm.ci.amd64.AMD64]     |
+    /// | ""riscv64"" | [jdk.vm.ci.riscv64.RISCV64] |
+---
+ *
+ * The value returned by {@code Architecture#getName} for an instance of this class is {@code ""riscv64""}.",
+,,https://github.com/yacy/yacy_search_server/commit/38bbd4a4b30c6b9d8032e6fd502e5381be3ece3e,yacy/yacy_search_server,2007-10-19,"no code changes. just touched yacyClient.java to trigger a rebuild of the file in an uncleaned tree.
+NOTE: run ""ant clean"" before building SVN 4166/4167 in a tree that includes class files from a previous build to make sure, that every class file is rebuilt!
+
+git-svn-id: https://svn.berlios.de/svnroot/repos/yacy/trunk@4167 6c8d7289-2bf4-0310-a012-ef5d649a1542",-1,,yacyClient.java,yacyClient,inline,"
+---
+","    public static int publishMySeed(String address, String otherHash) {
+        // this is called to enrich the seed information by
+        // - own address (if peer is behind a nat/router)
+        // - check peer type (virgin/junior/senior/principal)
+        // to do this, we send a 'Hello' to another peer
+        // this carries the following information:
+        // 'iam' - own hash
+        // 'youare' - remote hash, to verify that we are correct
+        // 'key' - a session key that the remote peer may use to answer
+        // and the own seed string
+        // we expect the following information to be send back:
+        // - 'yourip' the ip of the connection peer (we)
+        // - 'yourtype' the type of this peer that the other peer checked by asking for a specific word
+        // and the remote seed string
+        // the number of new seeds are returned
+        // one exceptional failure case is when we know the other's peers hash, the other peers responds correctly
+        // but they appear to be another peer by comparisment of the other peer's hash
+        // this works of course only if we know the other peer's hash.
+        
+        HashMap result = null;
+        final serverObjects post = yacyNetwork.basicRequestPost(plasmaSwitchboard.getSwitchboard(), null);
+        for (int retry = 0; retry < 3; retry++) try {
+            // generate request
+            post.putASIS(""count"", ""20"");
+            post.putASIS(""seed"", yacyCore.seedDB.mySeed().genSeedStr(post.get(""key"", """")));
+            yacyCore.log.logFine(""yacyClient.publishMySeed thread '"" + Thread.currentThread().getName() + ""' contacting peer at "" + address);
+            // send request
+            result = nxTools.table(
+                    httpc.wput(new yacyURL(""http://"" + address + ""/yacy/hello.html"", null),
+                               yacySeed.b64Hash2hexHash(otherHash) + "".yacyh"",
+                               12000, 
+                               null, 
+                               null,
+                               proxyConfig(),
+                               post,
+                               null
+                    ), ""UTF-8""
+            );
+            break;
+        } catch (Exception e) {
+... (省略: 全159行)"
+,,https://github.com/oracle/graal/commit/fbe390bc238a0705398025a238810df68422d651,oracle/graal,2015-11-24,Document @CompilationFinal semantics for arrays.,-1,,CompilerDirectives.java,CompilerDirectives,inline,"     * final while executing in the interpreter. If the field type is an array type, the compiler
+     * considers reads with a constant index as constants.","    public static void bailout(String reason) {
+    }"
+,,https://github.com/camunda/camunda/commit/1da4fb7f2bea64f86544411f8fb37b3fe08c0916,camunda/camunda,2025-02-25,"docs: update test classes documentation
+
+* Make sure to reference the MultiDbExtension
+* Extend examples of RegisterExtension in extension doc
+* Mention user definition and authenticated clients",-1,,CamundaMultiDBExtension.java,,inline," * This is for example necessary for authentication tests.
+ *
+ * <b>We need to make sure to tag the
+ * corresponding tests as @Tag(""multi-db-test""), otherwise tests are not executed in multi db fashion.</b>
+ * This is per default done by the {@link MultiDbTest} annotation.
+ *
+ *  <pre>{@code
+ *  @Tag(""multi-db-test"")
+ *  final class MyAuthMultiDbTest {
+ *
+ *    static final TestStandaloneBroker BROKER =
+ *        new TestStandaloneBroker().withBasicAuth().withAuthorizationsEnabled();
+ *
+ *    @RegisterExtension
+ *    static final CamundaMultiDBExtension EXTENSION = new CamundaMultiDBExtension(BROKER);
+ *
+ *    private static final String ADMIN = ""admin"";
+ *
+ *    @UserDefinition
+ *    private static final User ADMIN_USER =
+ *      new User(ADMIN,
+ *               ""password"",
+ *               List.of(new Permissions(AUTHORIZATION, PermissionTypeEnum.READ, List.of(""*""))));
+ *
+ *    @Test
+ *    void shouldMakeUseOfClient(@Authenticated(ADMIN) final CamundaClient adminClient) {
+ *      // given
+ *      // ... set up
+ *
+ *      // when
+ *      topology = adminClient.newTopologyRequest().send().join();
+ *
+ *      // then
+ *      assertThat(topology.getClusterSize()).isEqualTo(1);
+ *    }
+ *  }</pre>
+ *
+ *  As we can see there are further possibilities with the extension, like defining users with
+ *  annotated {@link UserDefinition}. This allows the extension to pick up the users, and create
+ *  them on client usage. Furthermore, authenticated clients are supported with this as well.
+ *
+ * The following code will inject a client, as parameter, that is authenticated with the ADMIN
+ * user.
+ * <pre>{@code
+ * @Test
+ * void shouldMakeUseOfClient(@Authenticated(ADMIN) final CamundaClient adminClient) {
+ * </pre>
+ *
+ *
+ *
+---
+ * org.junit.jupiter.api.TestTemplate} or {@link CamundaMultiDbExtension}. When applied, this
+ * indicates that the {@link CamundaClient} should be created with the provided user's credentials.",
+,,https://github.com/conductor-oss/conductor/commit/855a302b525a3a9271c9f903ce8eb76bb7555f07,conductor-oss/conductor,2018-06-28,grpc: Document the ProtoMapper methods,-1,,ProtoMapper.java,,javadoc,"/**
+ * ProtoMapper implements conversion code between the internal models
+ * used by Conductor (POJOs) and their corresponding equivalents in
+ * the exposed Protocol Buffers interface.
+ *
+ * The vast majority of the mapping logic is implemented in the autogenerated
+ * {@link AbstractProtoMapper} class. This class only implements the custom
+ * logic for objects that need to be special cased in the API.
+ */
+---
+    /**
+     * Convert an {@link Object} instance into its equivalent {@link Value}
+     * ProtoBuf object.
+     *
+     * The {@link Value} ProtoBuf message is a variant type that can define any
+     * value representable as a native JSON type. Consequently, this method expects
+     * the given {@link Object} instance to be a Java object instance of JSON-native
+     * value, namely: null, {@link Boolean}, {@link Double}, {@link String},
+     * {@link Map<String, Object>}, {@link List<Object>}.
+     *
+     * Any other values will cause an exception to be thrown.
+     * See {@link ProtoMapper#fromProto(Value)} for the reverse mapping.
+     *
+     * @param val a Java object that can be represented natively in JSON
+     * @return an instance of a {@link Value} ProtoBuf message
+     */
+---
+    /**
+     * Convert a ProtoBuf {@link Value} message into its native Java object
+     * equivalent.
+     *
+     * See {@link ProtoMapper#toProto(Object)} for the reverse mapping and the
+     * possible values that can be returned from this method.
+     *
+     * @param any an instance of a ProtoBuf {@link Value} message
+     * @return a native Java object representing the value
+     */
+---
+    /**
+     * Convert a WorkflowTaskList message wrapper into a {@link List} instance
+     * with its contents.
+     *
+     * @param list an instance of a ProtoBuf message
+     * @return a list with the contents of the message
+     */
+---
+    /**
+     * Convert a list of {@link WorkflowTask} instances into a ProtoBuf wrapper object.
+     *
+     * @param list a list of {@link WorkflowTask} instances
+     * @return a ProtoBuf message wrapping the contents of the list
+     */",
+,,https://github.com/objectbox/objectbox-java/commit/f61eb8bf40175ea21aedf2746c1435609a946567,objectbox/objectbox-java,2024-06-03,"ToMany: update add, remove and get methods, note important details",-1,,ToMany.java,ToMany,inline,"     * Prepares to add the given target object to this relation.
+     * <p>
+     * To apply changes, call {@link #applyChangesToDb()} or put the object with the ToMany. For important details, see
+     * the notes about relations of {@link Box#put(Object)}.
+---
+     * Gets the target object at the given index.
+     * <p>
+     * {@link ToMany} uses lazy initialization, so on first access this will read the target objects from the database.
+---
+    /**
+     * Like {@link #remove(Object)}, but using the location of the target object.
+     */
+---
+    /**
+     * Prepares to remove the target object from this relation.
+     * <p>
+     * To apply changes, call {@link #applyChangesToDb()} or put the object with the ToMany. For important details, see
+     * the notes about relations of {@link Box#put(Object)}.
+     */
+---
+    /**
+     * Like {@link #remove(Object)}, but using just the ID of the target object.
+     */","    private void ensureEntities() {
+        if (entities == null) {
+            long id = relationInfo.sourceInfo.getIdGetter().getId(entity);
+            if (id == 0) {
+                // Not yet persisted entity
+                synchronized (this) {
+                    if (entities == null) {
+                        entities = getListFactory().createList();
+                    }
+                }
+            } else {
+                ensureBoxes();
+                List<TARGET> newEntities;
+                int relationId = relationInfo.relationId;
+                if (relationId != 0) {
+                    int sourceEntityId = relationInfo.sourceInfo.getEntityId();
+                    newEntities = targetBox.internalGetRelationEntities(sourceEntityId, relationId, id, false);
+                } else {
+                    if (relationInfo.targetIdProperty != null) {
+                        // Backlink from ToOne
+                        newEntities = targetBox.internalGetBacklinkEntities(relationInfo.targetInfo.getEntityId(),
+                                relationInfo.targetIdProperty, id);
+                    } else {
+                        // Backlink from ToMany
+                        newEntities = targetBox.internalGetRelationEntities(relationInfo.targetInfo.getEntityId(),
+                                relationInfo.targetRelationId, id, true);
+                    }
+                }
+                if (comparator != null) {
+                    Collections.sort(newEntities, comparator);
+                }
+                synchronized (this) {
+                    if (entities == null) {
+                        entities = newEntities;
+                    }
+                }
+            }
+        }
+    }"
+,,https://github.com/camunda/camunda/commit/078ca45a93cb6ae87728998b4cf3b425bf72133a,camunda/camunda,2022-09-20,"docs(engine): add explaining comment
+
+Explains why the reason is left empty in the event of an ExceededBatchRecordSizeException.",-1,,Engine.java,Engine,inline,"      // Rejection reason is left empty here. This is because we need to make sure we can write the
+      // rejection. The record itself does not exceed the batch record size, but adding a reason
+      // could cause it to cross the limit. When this happens the engine would reach an
+      // exception-loop.","  public void replay(final TypedRecord event) {
+    eventApplier.applyState(event.getKey(), event.getIntent(), event.getValue());
+  }"
+,,https://github.com/openjdk/jdk/commit/a165ef39c63c26f896914a6452859fd4e2ef4f17,openjdk/jdk,2019-05-21,"8183273: Clarify Instrumentation interface should not be implemented outside java.instrument module
+
+Add a note with a clarification
+
+Reviewed-by: alanb, dholmes, jcbeyler",-1,,Instrumentation.java,,inline," * Copyright (c) 2003, 2019, Oracle and/or its affiliates. All rights reserved.
+---
+ * <p>
+ * @apiNote This interface is not intended to be implemented outside of
+ * the java.instrument module.",
+,,https://github.com/gephi/gephi/commit/8894bb65296e9add575c3a6b2507331de388ab88,gephi/gephi,2010-10-04,Processor documentation.,-1,,AppendProcessor.java,,inline," * Processor 'Append graph' that tries to find in the current workspace nodes and
+ * edges in the container to only append new elements. It uses elements' id and
+ * label to do the matching.
+ * <p>
+ * The attibutes are not merged and values are from the latest element imported.
+ *
+---
+ * Processor 'Add full graph' that unloads the complete container into the
+ * workspace.
+ *
+---
+ * Processor 'Time Frame' that uses its 'date' parameter to associate the content
+ * of the container to a particular point in time. It locates and modify existing
+ * elements by appending new time intervals. It also create dynamic attribute
+ * values, as well as a dynamic weight.",
+,,https://github.com/google/ExoPlayer/commit/31e69d2daca143326d9fbf907fb1695a3a31b6d8,google/ExoPlayer,2022-08-19,MediaSession.Callback: Document an example when onAddMediaItems is called.,-1,,MediaSession.java,ControllerInfo,inline,"     * methods. For instance when selecting an item on Android Auto, which should then be played.","    default void onDisconnected(MediaSession session, ControllerInfo controller) {}
+"
+,,https://github.com/openjdk/jdk/commit/4bea8ffc4c310fc8c87119543692114d20fcf7ca,openjdk/jdk,2018-01-30,"8195852: The usage of permissions in Desktop API should be clarified
+
+Reviewed-by: prr",-1,,Desktop.java,,inline," * <p> Note: the methods in the {@code Desktop} class may require
+ * platform-dependent permissions in addition to those described in the
+ * specification.
+ *",
+,,https://github.com/google/error-prone/commit/578b3c16a1a902d95771481630a9cbce97b255a3,google/error-prone,2025-10-17,"Add a comment to explain why FlagSpec is here; it does rather stand out.
+
+PiperOrigin-RevId: 820624519",-1,,UnnecessaryQualifier.java,UnnecessaryQualifier,inline,"          // FlagSpec is obviously not an injecty annotation, but it's commonly used with
+          // FlagBinder, at which point qualifiers on the field are relevant.","  private Description deleteAnnotations(ImmutableList<AnnotationTree> annotations) {
+    return describeMatch(
+        annotations.get(0), annotations.stream().map(SuggestedFix::delete).collect(mergeFixes()));
+  }"
+,,https://github.com/apache/jmeter/commit/b06339b36f7e50ea1fe47dee58c1ce83fd076238,apache/jmeter,2011-08-07,"Document how to create SVN tag
+
+git-svn-id: https://svn.apache.org/repos/asf/jakarta/jmeter/trunk@1154738 13f79535-47bb-0310-9956-ffa450edef68
+
+Former-commit-id: c0e4b0c0202bb584ab16c7aa58461f0fd0da3a00",-1,,JMeterVersion.java,,inline,"     * Updated: 20110807 1823
+     * The previous line is set to ${DSTAMP} ${TSTAMP}, to ensure that the file is modified
+---
+     * The SVN tag can be created as follows:
+     * - ensure workspace is up-to-date with SVN
+     * - touch this file by running ""ant touch-version""
+     * - create the tag from workspace:
+     *   ""svn cp . https://svn.apache.org/repos/asf/jakarta/jmeter/tags/TAGNAME""
+     * - Checkout the tag",
+,,https://github.com/oracle/graal/commit/fddfebe0a549a7ae539771f0e8d718a35f2e0165,oracle/graal,2016-06-23,"Document that @Child and @Children imply @CompilationFinal
+
+Signed-off-by: Stefan Marr <git@stefan-marr.de>",-1,,Node.java,,inline,"     * This annotation implies the semantics of @{@link CompilationFinal}(dimensions = 1).
+     *
+---
+     * This annotation implies the semantics of {@link CompilationFinal}.
+     *",
+,,https://github.com/camunda/camunda/commit/3a123e4e7763ee11565044764288caf74a6db462,camunda/camunda,2024-03-08,refactor: add documentations to the exporter phases.,-1,,ExporterDirector.java,ExporterDirector,javadoc,"  /**
+   * This method enables us to pause the exporting of records. No records are exported until resume
+   * exporting is invoked.
+   *
+   * <p>If the exporter is soft paused and pauseExporting is called, the exporter will be ""hard""
+   * paused.
+   */
+---
+  /**
+   * When the exporter is soft paused, we keep exporting the records without updating the exporter
+   * state. Upon resuming, the exporter is updated with the position and metadata of the last
+   * exported record.
+   *
+   * <p>If the exporter is hard paused and softPauseExporting is called, the exporter will be soft
+   * paused.
+   */
+---
+  /**
+   * This method enables us to resume the exporting of records after it has been paused. It works
+   * both to resume the ""soft pause"" state and the ""paused"" state. Upon resuming, the exporter is
+   * updated with the position and metadata of the last exported record.
+   */
+---
+// The PAUSED phase is when the exporter is paused, and the exporter is not exporting records.
+// The SOFT_PAUSED phase is when we keep exporting the records without updating the exporter state.","  public ActorFuture<Void> stopAsync() {
+    return actor.close();
+  }"
+,,https://github.com/hneemann/Digital/commit/118c66a79726f0d0634b763323c3f9ca91d7b51d,hneemann/Digital,2016-04-15,added some documentation,-1,,Pin.java,,inline," *
+---
+    /**
+     * Creates a new pin
+     *
+     * @param pos the position
+     * @param pin the PinDescription
+     */
+---
+    /**
+     * @return the pins position
+     */
+---
+    /**
+     * @return the value which represents the pin state
+     */
+---
+    /**
+     * Sets the value which represents the pins state
+     *
+     * @param value the ObservableValue
+     */
+---
+    /**
+     * If the pin is bidirectional there are two values, one which can be used to read the pins state
+     * and one to write the pins state. The readers value is generated so that all the writers are checked to
+     * find and select the one writer which is not in high Z state. If more then one writer is in an not high Z
+     * state an exception is thrown.
+     *
+     * @return returns the bidirectional reader
+     */
+---
+    /**
+     * Sets the bidirectional reader.
+     *
+     * @param readerValue the bidirectional reader
+     * @see Pin#getReaderValue()
+     */
+---
+     * Registers a new window.
+     * If an old window with the same id is found, its position and size is set to the new window.
+     * After that the old window is disposed.",
+,,https://github.com/openjdk/jdk/commit/4ff5f3a8c0910e9ed9d77586bd692c469bdf3460,openjdk/jdk,2026-01-27,"8376271: ZipFile comment confusingly refers to ""native"" ZIP file implementation
+
+Reviewed-by: jpai",-1,,ZipFile.java,,inline,"    // An object holding state which needs to be cleaned after
+    // this ZipFile is closed or becomes unreachable:
+---
+    // c) the Source object providing read access to the actual ZIP file",
+,,https://github.com/eclipse-vertx/vert.x/commit/1675e9845e7ed7991bc3fe5ddee23884e3f64fe8,eclipse-vertx/vert.x,2016-04-24,":memo: Add comment explaining the `OrderedExecutorFactory::log` access change
+
+Signed-off-by: Fabio Tudone <fabio@paralleluniverse.co>",-1,,OrderedExecutorFactory.java,,inline,"  // It must be package-private rather than `private` in order to avoid the generation of an accessor, which would
+  // cause Quasar 0.7.5-SNAPSHOT+ to print print an harmless error message during vert.x boot when using the agent
+  // instrumentation method. See https://github.com/puniverse/quasar/issues/160#issuecomment-205977756 for details.",
+,,https://github.com/netty/netty/commit/55078d87bd7cc7f560c99f04f6e08dce977a0087,netty/netty,2009-12-29,Documentation,-1,,ChannelHandlerContext.java,,inline," * <h3>Retrieving for later use</h3>
+ *
+ * You can keep the {@link ChannelHandlerContext} for later use, such as
+ * triggering an event outside the handler methods, even from a different thread.
+ * <pre>
+ * public class MyHandler extends SimpleChannelHandler
+ *                        implements LifeCycleAwareChannelHandler {
+ *
+ *     private ChannelHandlerContex ctx;
+ *
+ *     public void beforeAdd(ChannelHandlerContext ctx) {
+ *         this.ctx = ctx;
+ *     }
+ *
+ *     public void messageReceived(ChannelHandlerContext ctx, MessageEvent evt) {
+ *         ctx.setAttachment(evt.getMessage());
+ *     }
+ *
+ *     public Object getLastReceivedMessage() {
+ *         return ctx.getAttachment();
+ *     }
+ *     ...
+ * }
+ * </pre>
+ *
+---
+ * might lead to an unexpected behavior.  It is because the context object
+ * might not have been fully added to the pipeline or the context object is not
+ * a part of the pipeline anymore respectively.",
+,,https://github.com/google/ExoPlayer/commit/6aa792aad540a599b7c5f4ee28d759f470c4d1f7,google/ExoPlayer,2019-11-05,"Document error handling in the Extractor interface
+
+PiperOrigin-RevId: 276660235",-1,,Extractor.java,,inline,"   * <p>When this method throws an {@link IOException} or an {@link InterruptedException},
+   * extraction may continue by providing an {@link ExtractorInput} with an unchanged {@link
+   * ExtractorInput#getPosition() read position} to a subsequent call to this method.
+   *",
+,,https://github.com/google/guava/commit/588ce172f1270a1a5267933fab5486a048e60025,google/guava,2019-08-16,"Add note about {@code ByteSource.wrap}'s use of the given byte array.
+
+Fixes https://github.com/google/guava/issues/2603
+
+RELNOTES=n/a
+
+-------------
+Created by MOE: https://github.com/google/moe
+MOE_MIGRATED_REVID=262439830",-1,,ByteSource.java,ByteSource,inline,"   * <p>Note that the given byte array may be be passed directly to methods on, for example, {@code
+   * OutputStream} (when {@code copyTo(OutputStream)} is called on the resulting {@code
+   * ByteSource}). This could allow a malicious {@code OutputStream} implementation to modify the
+   * contents of the array, but provides better performance in the normal case.
+   *","  public static ByteSource concat(ByteSource... sources) {
+    return concat(ImmutableList.copyOf(sources));
+  }"
+,,https://github.com/mockito/mockito/commit/cf5bd5f2bc26cd1da02a9006ff2b5e78ab1975a8,mockito/mockito,2016-09-08,"Fixed javadoc documentation in the main class
+
+We don't need to repeat this information in the javadoc, it's on the wiki.",-1,,Mockito.java,,inline," *      <a href=""#0"">0. Migrating to Mockito 2</a><br/>
+---
+ * <h3 id=""0"">0. <a class=""meaningful_link"" href=""#verification"">Migrating to Mockito 2</a></h3>
+---
+ * For comprehensive information about the new release including incompatible changes,
+ * see '<a href=""https://github.com/mockito/mockito/wiki/What%27s-new-in-Mockito-2"">What's new in Mockito 2</a>' wiki page.
+ * We hope that you enjoy Mockito 2!
+ *
+ * <h3 id=""1"">1. <a class=""meaningful_link"" href=""#verification"">Let's verify some behaviour!</a></h3>",
+,,https://github.com/apache/beam/commit/8e49bfc82a606abf7ace7120cc63e097bcf055c8,apache/beam,2015-05-12,"Remove reference to CLOUDSDK_EXTRA_SCOPES.
+
+----Release Notes----
+Datasore uses platform scope set by gcloud, no need to set extra scopes.
+[]
+-------------
+Created by MOE: http://code.google.com/p/moe-java
+MOE_MIGRATED_REVID=92730361",-1,,DatastoreWordCount.java,,inline," * <p> To run this example, users need to use gcloud to get credential for Datastore:
+---
+ * <p> To use {@link DatastoreIO}, users must use gcloud to get credential for Datastore:
+---
+  * $ gcloud auth login",
+,,https://github.com/oracle/graal/commit/7789ef9a44de1cae8a2a5e3ed5162966fe019e72,oracle/graal,2016-01-28,"Improved documentation linking the related methods
+
+Based on comments by @jtulach.
+
+Signed-off-by: Stefan Marr <git@stefan-marr.de>",-1,,PolyglotEngine.java,Builder,inline,"         * language. These arguments {@link com.oracle.truffle.api.TruffleLanguage.Env#getConfig()
+         * can be used by the language} to initialize and configure their
+         * {@link com.oracle.truffle.api.TruffleLanguage#createContext(com.oracle.truffle.api.TruffleLanguage.Env)
+         * initial execution state} correctly.
+---
+         * @param value to parameterize initial state of a language
+         * @return instance of this builder
+---
+         * Configuration arguments for this language. Arguments set
+         * {@link com.oracle.truffle.api.vm.PolyglotEngine.Builder#config when constructing the
+         * engine} are accessible via this map.
+         *
+         * @return read-only view of configuration options for this language","        public Builder onEvent(EventConsumer<?> handler) {
+            handler.getClass();
+            handlers.add(handler);
+            return this;
+        }"
+,,https://github.com/SeleniumHQ/selenium/commit/fdef2472ddb27779edbd10b77fa9e9e7bc65139e,SeleniumHQ/selenium,2006-11-14,"Additional documentation for SeleneseAntTask
+
+
+r3568",-1,,SeleneseAntTask.java,,inline," * <p>Use it like this (for example):<blockquote><code>
+ * &lt;taskdef&nbsp;resource=""selenium-ant.properties""&gt;<br/>
+ * &nbsp;&nbsp;&nbsp;&nbsp;&lt;classpath&gt;<br/>
+ * &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&lt;pathelement&nbsp;location=""selenium-server.jar""/&gt;<br/>
+ * &nbsp;&nbsp;&nbsp;&nbsp;&lt;/classpath&gt;<br/>
+ * &lt;/taskdef&gt;<br/>
+ * &lt;selenese&nbsp;<br/>
+ * &nbsp;&nbsp;&nbsp;&nbsp;suite=""c:\absolute\path\to\my\HTMLSuite.html""<br/>
+ * &nbsp;&nbsp;&nbsp;&nbsp;browser=""*firefox""<br/>
+ * &nbsp;&nbsp;&nbsp;&nbsp;results=""c:\absolute\path\to\my\results.html""<br/>
+ * &nbsp;&nbsp;&nbsp;&nbsp;multiWindow=""true""<br/>
+ * &nbsp;&nbsp;&nbsp;&nbsp;timeoutInSeconds=""900""<br/>
+ * &nbsp;&nbsp;&nbsp;&nbsp;startURL=""http://www.google.com""&nbsp;/&gt;</code></blockquote>
+ *",
+,,https://github.com/openjdk/jdk/commit/8225a5f58a62ddf4acbb879bfcb53cf7bfd8542f,openjdk/jdk,2024-09-26,"8340981: Update citations to ""Hacker's Delight""
+
+Reviewed-by: bpb, iris, liach, jwaters",-1,,Integer.java,,inline," * Copyright (c) 1994, 2024, Oracle and/or its affiliates. All rights reserved.
+---
+ * based on material from Henry S. Warren, Jr.'s <cite>Hacker's
+ * Delight</cite>, (Addison Wesley, 2002) and <cite>Hacker's
+ * Delight, Second Edition</cite>, (Pearson Education, 2013).
+---
+     * The Sheep And Goats (SAG) operation (see Hacker's Delight, Second Edition, section 7.7)
+---
+ * Copyright (c) 1994, 2024, Oracle and/or its affiliates. All rights reserved.
+---
+ * based on material from Henry S. Warren, Jr.'s <cite>Hacker's
+ * Delight</cite>, (Addison Wesley, 2002) and <cite>Hacker's
+ * Delight, Second Edition</cite>, (Pearson Education, 2013).
+---
+     * The Sheep And Goats (SAG) operation (see Hacker's Delight, Second Edition, section 7.7)",
+,,https://github.com/liquibase/liquibase/commit/6527ae59d6e3385a308e02efdbebd560496b4c3c,liquibase/liquibase,2019-08-14,improve documentation,-1,,Location.java,,inline," * four LocationTypes in use. The FILE_PATH type is the most direct. The ENVIRONMENT_VARIABLE
+ * and SYSTEM_PROPERTY types are things that can refer to a path. These three types eventually
+ * lead to a path on the filesystem that can be used to get a file.
+ * The fourth type is BASE64_STRING. For this type, the value is a BASE64 encoded string of a
+ * license file.",

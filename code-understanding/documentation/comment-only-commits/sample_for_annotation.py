@@ -60,7 +60,7 @@ def main():
                 c.commit_hash,
                 c.commit_date,
                 c.commit_message,
-                c.is_different_author,
+                cm.is_different_author,
                 r.repo,
                 cm.added_comment,
                 cm.comment_type,
