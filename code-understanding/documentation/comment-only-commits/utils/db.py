@@ -19,6 +19,8 @@ CREATE TABLE IF NOT EXISTS commits (
     author_id      TEXT,
     has_issue_ref     INTEGER NOT NULL DEFAULT 0,
     issue_complexity  INTEGER,  -- NULL=未確認, 1=難解さ関連, 0=非該当
+    is_autoclose      INTEGER,  -- NULL=未確認, 1=auto-closeキーワードあり, 0=refs/bareのみ
+    issue_closed      INTEGER,  -- NULL=未確認, 1=issueがclosed, 0=open/not found
     UNIQUE (repo_id, commit_hash),
     FOREIGN KEY (repo_id) REFERENCES repos(id)
 );
@@ -61,8 +63,10 @@ def initialize(db_path: Path) -> None:
         conn.executescript(SCHEMA)
         # 既存DBへのカラム追加（既に存在する場合は無視）
         for col, definition in [
-            ("has_issue_ref", "INTEGER NOT NULL DEFAULT 0"),
+            ("has_issue_ref",    "INTEGER NOT NULL DEFAULT 0"),
             ("issue_complexity", "INTEGER"),
+            ("is_autoclose",     "INTEGER"),
+            ("issue_closed",     "INTEGER"),
         ]:
             try:
                 conn.execute(f"ALTER TABLE commits ADD COLUMN {col} {definition}")

@@ -12,6 +12,22 @@ CLARIFY_KEYWORDS = re.compile(
     re.IGNORECASE,
 )
 
+# GitHubの自動クローズキーワード（refs/bare #NNN は含まない）
+# 例: "fixes #123", "closes org/repo#456", "resolves #78"
+_AUTOCLOSE_REF = re.compile(
+    r"(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s+"
+    r"(?:[\w.\-]+/[\w.\-]+)?"  # optional org/repo prefix
+    r"#(\d+)",
+    re.IGNORECASE,
+)
+
+# auto-close issue番号抽出用
+_AUTOCLOSE_EXTRACT = re.compile(
+    r"(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s+"
+    r"([\w.\-]+/[\w.\-]+)?#(\d+)",
+    re.IGNORECASE,
+)
+
 # GitHub auto-close keywords + bare/refs patterns
 # 例: "fixes #123", "closes org/repo#456", "refs #78", "#99"
 _ISSUE_REF = re.compile(
@@ -86,6 +102,24 @@ def classify_comment(lines: list[str]) -> str:
 def has_clarify_keyword(message: str) -> bool:
     """コミットメッセージが「明確化」を示すキーワードを含むか。"""
     return bool(CLARIFY_KEYWORDS.search(message or ""))
+
+
+def has_autoclose_keyword(message: str) -> bool:
+    """fixes/closes/resolves #NNN 形式の自動クローズキーワードを含むか（refs/bare #NNN は除外）。"""
+    return bool(_AUTOCLOSE_REF.search(message or ""))
+
+
+def extract_autoclose_issues(message: str) -> list[tuple[str | None, int]]:
+    """
+    自動クローズキーワード付きのissue番号を抽出する。
+    Returns: list of (repo_override_or_None, issue_number)
+    """
+    results = []
+    for m in _AUTOCLOSE_EXTRACT.finditer(message or ""):
+        repo_override = m.group(1) or None
+        issue_number = int(m.group(2))
+        results.append((repo_override, issue_number))
+    return results
 
 
 def has_issue_reference(message: str) -> bool:
