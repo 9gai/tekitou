@@ -3,7 +3,7 @@
 ## テーマ概要
 
 コード理解を支援するドキュメント（コメント・識別子名・README等）の研究を調査・議論するファイル。
-親テーマ：code-understanding/STEERING.md
+親テーマ：[STEERING-code-understanding.md](../STEERING-code-understanding.md)
 
 ---
 

@@ -1,5 +1,7 @@
 # Comment-Only Commits — 実行ログ・ステアリングファイル
 
+親テーマ：[STEERING-documentation.md](../STEERING-documentation.md)
+
 設計の詳細は [spec.md](spec.md) を参照。本ファイルは実際の実行・トラブル対応・結果を記録する。
 
 ---
