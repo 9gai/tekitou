@@ -124,6 +124,48 @@
 
 ---
 
+## 関連文献：AI-PRレビューの2本（精読, 2026-05-27）
+
+両方とも AIDev データセット（Li/Zhang/Hassan 2025, 932k PR）に乗る MSR'26/EASE'26 文献。MSR'26起点論文 Haider & Zimmermann と同じ生態系。
+
+### ① Minh et al. "Early-Stage Prediction of Review Effort in AI-Generated PRs"（MSR'26 Mining **Challenge**, arXiv 2601.00753, 5p）
+
+**チャレンジ部門＝コンペ**（査読あるが新規性より予測精度が評価軸）。著者はベトナム National University の学生7名。Zenodo 17993901。
+
+**何をした**：AI-PRのうち「高負荷（レビュー/コメント多）」を**PR作成時点の静的特徴だけ**で予測する Circuit Breaker モデル。33,707 agent-PR（type=Bot＋Codex/Claude/Devin/Copilot, 決定的botは除外, 監査precision 94%）。
+
+**ターゲット定義**：High Cost ＝ **Effort Score（全review+comment数, bot含む）上位20%**。**time-to-merge ではなくコメント/レビュー量**で effort を測る（size↔latency相関は弱いと引用[9]）。→ **STEERING方針「待ち時間は対象外・churn/コメント密度を主指標」と同じ思想**。
+
+**結果**：
+- LightGBM (T0, temporal) **AUC 0.957 / PR-AUC 0.881**。20%予算で高負荷PRの69%を捕捉。
+- **意味情報は効かない**：CodeBERT **AUC 0.52**（ほぼrandom）。ただし入力は**PR説明文の要約**でコードhunkではない。「agents tell less than they touch」。
+- **「サイズだけ」批判を自分で潰している**：size-only は temporal で 0.93 だが **repo-disjoint で 0.65 に崩壊**（時系列交絡）。さらに**サイズ四分位内**で full model がsize-onlyを上回る（Large層 Precision@20% +17.5pp）＝size tautology を統計処理。チャレンジ論文にしては手堅い。
+- RQ2 ghosting：**厳密定義で放棄率3.8%**（rejected AND feedback後14日無活動）。28.3%が即マージ。最強の放棄予測子＝**unplanned complexity（計画なしの大規模マルチファイル変更）**。`has_plan`（"plan:"等を正規表現検出, precision 91%）は**放棄の強い負の予測子**。
+
+**自分の研究との関係**：**粒度が逆（PR丸ごとのトリアージ vs hunk/行のrationale）→ 競合せず補完**。注意：彼らの「意味は効かない」は**PR説明文の要約**の話で、**コード内の設計判断の有無**とは別物。引用時にこの区別を明示すれば脅威にならない。effort指標の思想（量で測る）はむしろ味方。
+
+### ② Duma et al. "These Aren't the Reviews You're Looking For: How Humans Review AI-Generated PRs"（EASE 2026, arXiv 2605.02273, **査読付き**）
+
+**Nicolaus Copernicus University（ポーランド）**。AIDev（R_pop=33,596 AI-PR／R_∩=AI 9,616+人間 5,574 を同一repo比較）。正規表現分類器（Agent-steering/Automation/Human-review, 手動検証800件で精度96.5%）＋Chi-square（Benjamini–Hochberg補正, p<0.001）。
+
+**発見（前提を揺さぶる・要注意）**：
+- **AI-PRの61.38%はレビュー記録ゼロ**。レビューされたうち**58.77%がエージェントのみ**、人間単独はわずか10.14%。**全AI-PRの84%が「無レビュー or エージェント専任」**。
+- 同一repo比較：人間単独レビュー率 AI-PR **8.08%** vs 人間PR **25.21%**。
+- **最大の差（V=0.34）**：AI-PRへの人間コメントの**25.92%が「エージェント操作命令」**（人間PRでは1.63%）。直接レビューは65.53% vs 93.56%。
+- 結論：**人間の関与"量"は同等だが"形"が変わる**。評価（review）とエージェント操縦（steering）の境界が溶ける。
+- 限界：**記録されたレビューのみ**＝silent approvalを取りこぼすと自認。「ほぼレビューされない」は過大かもしれない。記述的のみ（コード品質・有効性は未評価）。
+
+**「reviewed」の操作的定義と最大の盲点（2026-05-27 逐語確認）**：
+- しきい値は **「レビューコメントが1件以上あるか」だけ**。データ源は AIDev の review activity（R_human不足分は GitHub REST API）。33,596 AI-PR中 20,621件（**61.38%**）がコメント0件＝「no recorded review activity」。役割は `author` フィールドで人間/エージェントに二分（C_human/C_AI）。
+- **測っているのは「コメントというテキスト痕跡の有無」であって「人間が中身を見たか」ではない**。GitHubでは(a)空のApprove（本文なし）を押してマージ、(b)コメントせず直接マージ、いずれもコメント0件＝「未レビュー」に算入される。**人間が全行読んで黙ってマージしても統計上は"未レビュー61.38%"に入る**。著者自身も空Approveイベントを捕捉していない（silent approvalを限界に挙げている＝捕捉していれば限界にならない）。
+- **著者は Threats to Validity / Construct Validity で明示的に認めている（逐語）**："The absence of review comments does not imply that the code was not reviewed (e.g., it may have received a silent approval)." / "Nevertheless, we classify all PRs without comments as not reviewed, as there is no empirical basis to distinguish between these cases." さらに§6.2で「コメントなし検査はトレーサビリティを下げる」。
+- **較正**：これは著者が隠した弱点ではなく**明示した設計上の割り切り**。引用時は「著者自身がconstruct validityで認める通り、コメント痕跡で測った代理指標」と添えれば公平。「AI-PRは人間にレビューされない」ではなく**「AI-PRには人間のレビューコメントが残りにくい」**が正確。silent approvalか本当に誰も見ていないかは**この指標では区別できない**＝OSSの小さい/自明なPRで人間関与を構造的に過小評価しうる。
+
+**自分の研究への直接的脅威**：本研究の前提「②を**人間レビュアに**届くようコード位置に残す」に対し、「**AI-PRは人間にほとんどレビューされず、される時も設計議論よりエージェント指示が中心**」と実証。→ 保留論点（AIコードで②を問う経路が人間と同様に成立するか）に**「成立しにくい」方向の証拠**。
+**ただし**：(a) 自分のデータは人間PR＝手法プロトタイプは成立、AI-PRへの一般化が問題なだけ。(b) silent approval 取りこぼしで過大評価の可能性。(c) 逆に「AI-PRは設計議論されない＝だから②を自動で残す価値がある」と動機に転換も可能。**無視すると査読で殺される。正面から引用して射程（人間PRで手法確立→AI-PRは別途検証）を防御的に切る**必要がある。
+
+---
+
 ## 基礎文献：Tao et al. FSE 2012 "How Do Software Engineers Understand Code Changes?"
 
 **著者/媒体：** Yida Tao, Yingnong Dang, Tao Xie, Dongmei Zhang, Sunghun Kim。FSE 2012（Microsoft産業調査）。
@@ -591,6 +633,26 @@ accepted_unchanged 2,539件を10シャードに分割し、サブエージェン
 
 ---
 
+## レビューの流れの確認：「数行レベルの設計判断」は存在するか（2026-05-27）
+
+**問い（本人）**：そもそも人間のレビューはコードの数行レベルまで見て設計判断をするものか。研究の前提（hunk/行に②を残す）が成立するか確認したかった。
+
+**調べたもの**：企業の公開レビュー慣行。
+- **Google Engineering Practices（eng-practices）**：レビュアの流れ＝①PR説明を読み必要性を判断 → ②「主要ファイル」を特定し設計を先に見る（大問題は残りを読む前に指摘）→ ③残りをツール表示順に流す（テストを先に読むのも有効）。確認の優先順位＝設計＞機能性＞複雑性＞テスト＞命名/コメント/スタイル。承認基準＝「全体のコード健全性を明確に向上させれば承認、完璧を待つな」。軽微は`Nit:`で任意対応。
+- **Microsoft（Engineering@Microsoft blog）**：AIが定型チェック（スタイル・null・既知バグ）、人間はアーキテクチャ・セキュリティ等の高レベルに集中。AIは提案のみ・採用判断は人間。
+- **Cloudflare（engineering blog）**：マルチエージェント（専門分野別）。設計思想は「**何を見ないか**を定義」＝雑音を絞る（平均1.2 findings/review）。AIが明示的に「できない」と認めた領域＝**設計意図・長期方針・クロスシステム影響**＝人間担当。
+- **ezyang blog（2025-12, PyTorchコア）**：LLM時代のレビュー＝「**人間のアラインメント機構**」。バグ発見より、著者とレビュアがシステム理解で合意するプロセスへ。著者は機械的問題を事前にAIで潰し「なぜこう設計したか」の伝達に集中すべき。
+
+**結論（Opus 4.7で較正・重要な区別）**：
+- 「設計判断がレビューで発生する」は揺るがない。だが本来の問い「**数行レベル（hunk/行）**で必要か」に対して、Sonnetの締め（Pascarella N1・Ebert・企業ブログを並べて「支持」）は**粒度の対応が緩かった**。
+  - Pascarella N1「代替案は妥当か」はアプローチ全体も含み、行レベル限定ではない。
+  - Ebert missing rationale も混乱原因一般で行レベル限定ではない。
+  - **Google のガイドはむしろ逆向き**：最重要の設計レビューは「主要ファイル・CL全体」の設計であって行レベルではない。この緊張は未解消。
+- 「数行レベル」を**最も直接支持するのは企業ブログではなく本人のデータ**（実証分析① と GH Archive Stage 3 の正例）。いずれも**インラインコメント＝特定行に紐づいた**設計whyの問い＝定義上「行レベルで設計判断が問われる」証拠。ただし高信頼な規模は43%でなく**トレードオフ明示の約10%層**。
+- **研究上の必須区別**：「行レベルの設計判断は**存在する**（→残す価値の前提はOK）」と「行レベルが設計レビューの**中心**だ」は別主張。前者だけ主張するなら問題なし。後者を主張するとGoogleのファイル/CL全体寄りガイドと衝突する。**前者に留めること。**
+
+---
+
 ## 保留中の論点（議論の余地・断定しない）
 
 背景を再検討する際に改めて議論する。現時点では結論を出さず，問いとして保持する。
@@ -599,6 +661,7 @@ accepted_unchanged 2,539件を10シャードに分割し、サブエージェン
   - 論点：AIコードの「作者」は誰か（prompt した人間か，agent 本体か）。人間の提出者は実装判断をしていない可能性。agent に後から聞くと post-hoc の説明（信頼性が疑問）。
   - 一方で，agent の生成時の reasoning trace を捕捉できれば事情は変わる（survey の(b)路線）。
   - **本人が「この"聞けない"論は変だ」と判断**（2026-05-27）。断定せず，背景検討時に再議論する。
+  - **新証拠（2026-05-27, Duma et al. EASE'26）**：AI-PRの61%はレビュー記録ゼロ／人間単独レビューは10%／人間コメントの26%はエージェント操作命令。**「人間がAI-PRをそもそも設計レビューしない」方向の実証**＝この経路は人間コードほど成立しない可能性。ただし silent approval 取りこぼしの限界あり。→ 詳細は「関連文献：AI-PRレビューの2本」②。
 
 ## 次回検討候補
 
