@@ -54,6 +54,34 @@
  .threelayer .ly h4{margin:0 0 4px;font-size:15px}
  .ly.solved{background:#eef7ee;border-color:#bcdfbc}
  .ly.target{background:#fff4e0;border-color:#f0d090}
+ .chain{margin:16px 0}
+ .chain .p{position:relative;border:1px solid var(--line);border-left:5px solid var(--accent);
+   border-radius:8px;padding:12px 16px 12px 60px;margin:0 0 6px;background:#fafbfd}
+ .chain .p .n{position:absolute;left:12px;top:12px;width:34px;height:34px;border-radius:50%;
+   background:var(--accent);color:#fff;text-align:center;line-height:34px;font-weight:700;font-size:15px}
+ .chain .p .t{font-weight:600}
+ .chain .p .ev{font-size:13px;color:var(--sub);margin-top:3px}
+ .chain .lnk{text-align:center;color:var(--accent);font-size:20px;line-height:1;margin:2px 0;font-weight:700}
+ .chain .p.turn{border-left-color:var(--accent2);background:#eafaf1}
+ .chain .p.turn .n{background:var(--accent2)}
+ .chain .concl{border:2px solid var(--accent);background:#eef4fb;border-radius:10px;
+   padding:14px 18px;margin-top:10px;font-size:16px}
+ .inaction{background:#fdecec;border:1px solid #f3c0c0;border-left:5px solid var(--warn);
+   border-radius:0 8px 8px 0;padding:14px 18px;margin:16px 0}
+ .inaction b{color:var(--warn)}
+ .qbox{display:flex;gap:10px;flex-wrap:wrap;margin:8px 0 16px}
+ .qbox .q3{flex:1;min-width:200px;border:1px dashed var(--accent);border-radius:8px;padding:10px 14px;background:#f7faff}
+ .qbox .q3 b{color:var(--accent)}
+ .why{border:1px solid var(--line);border-radius:10px;margin:10px 0;overflow:hidden}
+ .why .h{background:#eef2f8;padding:10px 14px;font-weight:600;border-left:5px solid var(--accent)}
+ .why .b{padding:10px 16px}
+ .why .b .src{display:inline-block;font-size:12px;color:#fff;background:var(--accent2);
+   border-radius:4px;padding:1px 7px;margin-right:6px}
+ .tension{background:#fff4e0;border:1px solid #f0d090;border-radius:10px;padding:14px 18px;margin:16px 0}
+ .lead2{background:#eef4fb;border-left:5px solid var(--accent);border-radius:0 12px 12px 0;padding:16px 22px;margin:14px 0}
+ .lead2 p{margin:10px 0;font-size:15.5px}
+ .lead2 p:first-child{font-size:17px;margin-top:0}
+ ul.cmp li{margin:7px 0}
 </style>
 </head>
 <body>
@@ -70,16 +98,74 @@
 
 <section>
  <h2>1. 問題設定</h2>
- <p>AIエージェントが大量のコードを生成する時代に、<b>人間のコードレビューがボトルネック化</b>する。これは仮説ではなく実測がある。</p>
- <ul>
-  <li>エージェント生成PRの<b>約70%が「レビュー長期化・未レビュー・却下」</b>に陥る。<span class="cite">(Hassan et al. 2025, <i>Agentic Software Engineering</i>, arXiv 2509.06216)</span></li>
-  <li>AIレビューツールを導入しても人間のレビューは速くなっていない<span class="cite">（業界調査：29%遅化・24%時短・47%変化なし, LeadDev）</span></li>
+
+ <div class="lead2">
+  <p><b>「なぜこの実装を選んだのか（②設計判断）」は、コードにもコミットメッセージにも書かれない。</b> だからレビュアは問い直すしかない——<b>人間が書いたコードですら</b>、GitHub の1週間分で「なぜこの方法か」を問うやり取りが <b>1,094件</b>、レビューコメントの <b>約43%が実装の選び方そのもの</b>に関わっていた（本研究の収集データ）。<b>書いてあれば、聞く必要はない。</b></p>
+  <p>この問い直しは、レビュアが変更を一件ずつ読み解いて意図を推し量る<b>認知作業</b>であって、ツールで肩代わりできていない。</p>
+  <p><b>そして AI がコードを量産する時代、この負荷は一方的に膨らむ。</b> AI はコードを書く速度を跳ね上げるが、それを読んで「なぜこの方法か」を理解・判断する<b>人間の速度は変わらない</b>。生成と理解のスピードが非対称になり、レビューだけがボトルネックとして残る——実際、エージェント生成PRの <b>約70%</b>がレビュー長期化・未レビュー・却下に陥り<span class="cite">（Hassan et al. 2025, arXiv 2509.06216）</span>、AIレビューツールを入れても人間のレビューは速くなっていない<span class="cite">（業界調査：29%遅化・24%時短・47%変化なし, LeadDev）</span>。<b>②がAIコードで人間コードとどう違うかは、本研究が実証で確かめる対象</b>であって、前提にはしない。</p>
+  <p><b>だから狙いは明快だ——</b>②が必要になる箇所を<b>先回りして特定し、すぐ参照できる形で残しておけば</b>、この問い直しの往復そのものを減らせるはずだ（時短効果は本研究で検証する仮説）。</p>
+ </div>
+
+ <p class="muted">レビューには<b>品質保証</b>と<b>知識移転・共同所有</b>の2目的があり、②の欠如は後者を直接損なう（理解せず通す <i>rubber-stamping</i>）。本研究は generic な効率化ではなく、この「②の問い直し」に焦点を絞る。</p>
+
+ <h3>1.1 ②が「残っていなければならない」根拠（既知だが未解決）</h3>
+ <p>②をレビュー時に参照できる必要があることは、一次資料で裏づく。<b>しかしいずれも未解決のまま残されている。</b></p>
+ <ul class="cmp">
+  <li><b>need は実証済み</b>：レビュアが最も多く労力を割く問いは「<b>これがベストの方法か／もっと良い手はないか</b>」＝まさに②設計判断の妥当性評価だ<span class="cite">（Pascarella 2018, 最頻ニーズ N1）</span>。「<b>なぜこの実装にしたのか</b>」自体も独立した情報ニーズとして直接問われ<span class="cite">（同 N3 Rationale）</span>、変更理解では rationale が最重要ニーズに挙がる<span class="cite">（Tao 2012, I-1）</span>。②は"あるべき論"ではなく、レビュアが<b>現に最も必要としている情報</b>だ。実際、②を分離して観測すると——予備分析（CodeReviewer 1万コメント）でレビューコメントの<b>約43.5%が実装の選び方(②)に関与</b>し、本研究のGitHub収集では1週間で「なぜこの方法か」を問うやり取りが<b>1,094件</b>に上った。</li>
+  <li><b>欠如は害</b>：missing rationale は混乱の最頻原因の1つで、混乱は遅延・品質低下・議論増を招く<span class="cite">（Ebert et al. EMSE 2021）</span>。</li>
+  <li><b>代替不能</b>：commit message の "why" は①機能的目的どまりで②ではない<span class="cite">（Zeng et al. ICSE 2026）</span>。そもそもコミットの67%しか変更を正確に記述しない<span class="cite">（Buse &amp; Weimer, Tao 2012経由）</span>。</li>
+  <li><b>蒸発する</b>：rationale は capture problem で <i>vaporize</i> し、レビューという捕捉機会も12年 operationalize されていない<span class="cite">（Dutoit 2006 / Bacchelli &amp; Bird ICSE 2013）</span>。</li>
  </ul>
- <p>レビューには2つの目的がある——<b>品質保証</b>と<b>知識移転・共同所有</b>。効率化は後者を侵食しうる（理解せず通す <i>rubber-stamping</i> のリスク）。本研究は generic なレビュー効率化ではなく、<b>「変更理解」の核心的な詰まりどころ</b>に焦点を絞る。</p>
+
+ <h3>1.2 だが「全部書け」は解にならない＝選別問題</h3>
+ <div class="tension">
+  過剰なコメントは<b>可読性低下・コードとの乖離による陳腐化・開発者時間の浪費</b>を招く<span class="cite">（Where should I comment? ICSE 2020）</span>。そして②は<b>頻出するが偏在する</b>——上記の②関与（43.5%）のうち、<b>トレードオフが明示的に問われる「深い②」は約10.6%</b>に集中していた。書くべきは全箇所ではなく、この偏った高需要点だ。
+  <br><br>
+  <b>∴ 問いは「②を書くか否か」ではなく「<u>どのコード位置に②を残すべきか</u>」の選別になる。</b>これが本研究の問いを必然的に導く。
+ </div>
 </section>
 
 <section>
- <h2>2. 詰まりどころ＝「なぜこう変更したか（rationale）」</h2>
+ <h2>2. なぜこの研究をやらなければならないのか</h2>
+ <p>説得すべきは3つの問いだ。<b>なぜ重要か（why important）／なぜ今か（why now）／なぜ今まで誰もやれなかったか（why unsolved）</b>。以下の論理の鎖で、いずれも一次資料から答えられる。</p>
+ <div class="qbox">
+  <div class="q3"><b>Why important</b><br><span class="muted">レビュー負荷の核心は②設計根拠の欠如。最頻の混乱原因なのに解決策がほぼ無い。</span></div>
+  <div class="q3"><b>Why now</b><br><span class="muted">AIコード量産でボトルネックが顕在化。既存路線は時短を実証できていない。</span></div>
+  <div class="q3"><b>Why unsolved</b><br><span class="muted">②は「蒸発」して捕捉不能とされてきた。その壁を破る観測シグナルが今ある。</span></div>
+ </div>
+
+ <div class="chain">
+  <div class="p"><span class="n">1</span>
+   <div class="t">AIがコードを量産し、人間のレビューがボトルネック化している。</div>
+   <div class="ev">エージェントPRの約70%がレビュー長期化・未レビュー・却下（Hassan et al. 2025）。生成側は加速する一方、検証側は加速していない。</div></div>
+  <div class="lnk">↓ だが</div>
+  <div class="p"><span class="n">2</span>
+   <div class="t">既存のレビュー効率化は、この「理解コスト」を下げられていない。</div>
+   <div class="ev">時短が実証されているのはレビュア推薦・優先順位付けのみ。<b>変更分割は時短未実証</b>（di Biase 2019：レビュー時間に有意差なし）、<b>LLM自動レビューは正答68.5%だが回帰率24.8%・人間の時短は未実証</b>、むしろ検証オーバーヘッドを増やす懸念（Cihan/Alami 2025）。commit message 生成は "what/①動機" 止まりで②に触れない。</div></div>
+  <div class="lnk">↓ なぜなら核心は</div>
+  <div class="p"><span class="n">3</span>
+   <div class="t">詰まりの核心は「②設計根拠（なぜこの方法を選んだか）」の欠如である。</div>
+   <div class="ev">Ebert et al. (EMSE 2021)：<b>missing rationale は最頻の混乱原因の1つ。なのに文献の解決策は実質1件だけ＝最大ギャップ。</b>著者自身が「コード/コメントから rationale を自動抽出する研究を作るべき」と名指しで提言。混乱は遅延・品質低下・<b>rubber-stamping</b> を招く。</div></div>
+  <div class="lnk">↓ では なぜ未解決か</div>
+  <div class="p"><span class="n">4</span>
+   <div class="t">②は「蒸発（vaporize）」し、捕捉不能とされてきた。</div>
+   <div class="ev">rationale の capture problem（Dutoit 2006）：書く労力が下流にしか効かず誰も残さない。Bacchelli &amp; Bird (ICSE 2013) は「レビューこそ rationale の capture 機会」と説いたが、<b>12年以上 operationalize されていない</b>。だから "どこに②を残すべきか" の正解データが存在しなかった。</div></div>
+  <div class="lnk">↓ ここが転換点</div>
+  <div class="p turn"><span class="n">5</span>
+   <div class="t">いま、蒸発前の本物の②を大規模に拾える観測シグナルが開けた。</div>
+   <div class="ev"><b>「レビュアが <i>なぜ</i> と聞いた × 作者が弁明し受理された」</b>＝(a)需要があり(b)コードに無かった証拠の積。GH Archive で大規模・低コストに採掘できる（本研究で1週間→正例1,094件を実証）。さらに <b>AI agent は自分の reasoning trace にアクセスできる</b>ため、人間の capture problem と違い②の捕捉は <i>uniquely tractable</i>＝この路線は AI コード時代へスケールする。</div></div>
+  <div class="concl">
+   <b>∴ 結論：</b>いま、レビュー需要を正解ラベルにして<b>「②をどのコード位置に残すべきか」を学習する研究</b>をやるべき。これは生成でも自動レビューでもなく、<b>人間の理解コストを直接下げる唯一の空白路線</b>であり、AIコード時代に向けて今しか開かない観測窓を使う。
+  </div>
+ </div>
+
+ <div class="inaction">
+  <b>やらなければどうなるか（cost of inaction）：</b>AIコードの量産が続けば、②が欠けたまま<b>rubber-stamping（理解せず承認）が常態化</b>し、知識移転が崩れ、<i>deceptive correctness</i>（もっともらしいが危うい箇所）が見逃される。そして②は今捕捉しなければ蒸発し続ける——<b>now or never</b> の観測機会である。
+ </div>
+</section>
+
+<section>
+ <h2>3. 詰まりどころ＝「なぜこう変更したか（rationale）」</h2>
  <p>複数の一次文献が、レビューの困難の中心に <b>変更の rationale（理由）</b> があることを示している。</p>
  <table>
   <tr><th>文献</th><th>知見</th></tr>
@@ -98,7 +184,7 @@
 </section>
 
 <section>
- <h2>3. 先行研究の空白</h2>
+ <h2>4. 先行研究の空白</h2>
  <p>「説明をどこに置くか」と「rationale を文書化するか」は別々に研究されてきたが、その<b>交差点</b>が空いている。</p>
  <table>
   <tr><th>系統</th><th>代表研究</th><th>限界</th></tr>
@@ -115,7 +201,7 @@
 </section>
 
 <section>
- <h2>4. 研究の問いとアイデア</h2>
+ <h2>5. 研究の問いとアイデア</h2>
  <div class="key"><b>RQ（暫定）：</b> コードの hunk/行単位で「ここには②設計根拠を残しておくべき」箇所を予測できるか。それは「レビュアが <i>なぜ</i> と問いがちな箇所」をどれだけ捉えるか。</div>
  <h3>正解ラベルの作り方 — レビュー質問を必要性の anchor にする</h3>
  <p>「ここに②が必要だった」という ground truth を、<b>2つの証拠の積</b>で定義する：</p>
@@ -124,10 +210,18 @@
   <li><b>(b) 作者が弁明し、それが受理された</b>（コードを直さず通った）＝ 実装者のミス修正ではなく<b>本物の設計判断</b>である証拠。</li>
  </ul>
  <p class="muted">これにより「ミス」と「本物の設計判断」を分離し、laziness 交絡（情報は既にどこかにあった）も排除する。受理された作者の回答＝ground-truth の rationale。</p>
+
+ <h3>想定反論：「AI が書いているのだから、聞けばいいのでは？」への応答</h3>
+ <p>AIコードなら②が無くても agent に後から問えばよく、わざわざ位置を予測して残す必要はない——という反論が当然予想される。だがこれは問題を<b>解かず、移すだけ</b>だ。</p>
+ <div class="why"><div class="h">① 「聞く」こと自体が、いま問題にしている往復負荷</div><div class="b">相手が人間から AI に変わっても、レビュアが「どこを・なぜ」と問い直す認知コストと往復は消えない。問題の移動であって解決ではない。</div></div>
+ <div class="why"><div class="h">② 一度聞いた答えを残さなければ蒸発する</div><div class="b">レビュアAが納得しても、レビュアB・半年後の保守者はまた聞く（N人 × M回）。capture problem は未解決のまま。「聞く」を価値あるものにするには、聞いた答えを必要な箇所に残すしかない＝本研究そのもの。</div></div>
+ <div class="why"><div class="h">③ post-hoc に聞いた説明は信頼できない恐れ</div><div class="b">生成後の agent は実際の生成プロセスと無関係な、もっともらしい後付け（confabulation）を作りうる。LLM の自己説明の忠実性は疑問視されており、「聞けば本物の②が出る」保証はない。</div></div>
+ <div class="why"><div class="h">④ そもそも「どこを聞くべきか」が分からない</div><div class="b">コードは大量で全部は聞けない（選別問題は残る）。位置予測は「ここは②を出させるべき箇所」を示す——「聞けばいい」を前提にしても、なお「どこを聞くか」で本研究が要る。</div></div>
+ <div class="gap"><b>むしろ追い風：</b>AI agent は人間と違い<b>自分の生成時の reasoning trace にアクセスできる</b>ため、②の捕捉は人間より容易（<i>uniquely tractable</i>）。問題は「②を引き出せるか」ではなく「<b>引き出した②をコードのどの位置に定着させるか</b>」になる。AIコード時代は②の供給が容易になる分、<b>「どこに残すか（位置予測）」の価値はむしろ上がる</b>。本研究は「聞けばいい」と対立せず、その弱点（場当たり・蒸発・選別不能）を補完する。</div>
 </section>
 
 <section>
- <h2>5. データ収集パイプライン</h2>
+ <h2>6. データ収集パイプライン</h2>
  <p class="muted">AIコードのレビューは GitHub にしか存在しないため、実証は <b>GH Archive（自前DL・課金なし）</b>。まず人間PRで手法を確立する。収集窓＝2025-03-03〜03-09 の連続1週間。</p>
  <div class="pipe">
   <div class="step"><b>Stage 1 — 抽出＆ペア化</b>：<code>PullRequestReviewCommentEvent</code> を抽出し、「why質問ルート（作者以外・非bot）× 作者返信」をペア化。
@@ -150,7 +244,7 @@
 </section>
 
 <section>
- <h2>6. 限界（正直に）</h2>
+ <h2>7. 限界（正直に）</h2>
  <div class="limit">
   <ul>
    <li><b>Pascarella bias</b>：拾えるのは「声に出された需要」だけ＝高 precision・低 recall。モデルが学ぶのは「客観的に②が必要な箇所」ではなく「<b>レビュアが聞きがちな箇所</b>」。学習正例としては許容だが主張時に断る。</li>
@@ -162,7 +256,7 @@
 </section>
 
 <section>
- <h2>7. 現状と次の一手</h2>
+ <h2>8. 現状と次の一手</h2>
  <p>データ収集パイプライン（Stage 1–3）は完走し、正例 1,094 件を確保。現在はラベル整備の前段として<b>アノテーション品質の人手検証</b>を実施している。</p>
  <ul>
   <li>① Stage 3 の precision を人手検証で較正（実施中）</li>
