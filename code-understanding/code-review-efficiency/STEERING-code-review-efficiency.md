@@ -541,6 +541,52 @@ diffだけでは分からない文脈を補い，認知負荷を削減。**コ�
 
 **次の一手（このテーマを深掘りするなら）**：CommtPst（JSS 2020）と AlSafwan 博論を精読し、「位置×種類」を誰がどこまでやったか確定 → 空白の輪郭を固める。
 
+## Stage 1+2 本実行の結果（2026-05-27, Windows側）
+
+mac側は1日検証だけだったので、**1週間連続窓（2025-03-03→03-09）を本実行**。スクリプト：`collect_gharchive.py`（Stage 1）＋新規 `stage2_verify.py`（Stage 2・REST）。トークンは `.env`（gitignore済）。
+
+**Stage 1（抽出→ペア化）**：
+- review comment **453,806件/週**（約64,800/日。mac側の77,028/日よりやや低いが同オーダー）。
+- why質問ルート **5,509件** → **作者返信ペア候補 2,985件**（ユニーク 2,665 PR / 2,082 repo）。連続窓で日跨ぎ取りこぼしが減り、385×7=2,695 の見積もりと整合。
+
+**Stage 2（REST検証：merged＋ルートコメントの position）**：
+| verdict | 件数 | 割合 |
+|---|---|---|
+| **accepted_unchanged（正例候補）** | **2,539** | **85.1%** |
+| not_merged（除外） | 370 | 12.4% |
+| unavailable（repo削除/private化等） | 72 | 2.4% |
+| root_not_found（コメント削除等） | 4 | 0.1% |
+
+**重要な知見（当初設計の修正）**：
+- **`line_outdated`（position=null＝後で行が変わった＝ミス修正）が0件**。RESTの `position` 行不変フィルタは**追加の弁別力を持たなかった**。理由：Stage 1で既に「作者が**返信した**ペア」に限定済み＝作者が黙ってコードを直す（＝ミス修正）型は返信が無く、そもそも候補に入っていない。**行不変判定とStage 1返信フィルタは情報が重複**。実質的に効いたフィルタは not_merged 除外（12.4%）のみ。
+- 当初「Stage 2で3〜5割残れば clean正例 100〜150/日」の想定に反し**85%が残存**。→ **「本物の②設計whyか／laziness除外」の選別は事実上すべて Stage 3（LLM）が担う**。
+- 想定（clean正例 約1,000件）を超え **正例候補 2,539件**を1週間窓で確保。Stage 3で絞っても十分な規模が見込める。
+- サンプル品質：ランダム6件中5件が本物の②（例 leanprover/KLR「なぜValueに定義？」→Termが内部にValueを持つから／PostHog「なぜdedupe？」→他ページ重複防止）。1件は作者譲歩＝Stage 3除外対象。mac側(6中5)と一致。
+
+**Stage 2の残課題**：isResolved（GraphQL限定）は未取得。RESTのpositionが弁別しなかった以上、「受理」の強い証拠が merged のみになっている。必要なら後段でGraphQL `isResolved`/`isOutdated` を足して締めるか、Stage 3のLLM判定に委ねるかは要検討。
+
+**Stage 3（LLM分類）結果（2026-05-27）**：
+accepted_unchanged 2,539件を10シャードに分割し、サブエージェント(sonnet)10並列で分類。判定軸＝(1)design_why＝質問が本物の設計why（criteria ii「なぜこの方法か」/iii「トレードオフ」）か (2)reply_rationale＝作者返信が実際にrationaleを説明か（譲歩"I'll change it"・既存成果物参照"see commit"＝laziness は false）。正例＝両方true。スクリプト：`make_shards.py`（分割）/`merge_stage3.py`（集計・検証）。
+
+| ラベル | 件数 | 割合 |
+|---|---|---|
+| **positive（正例）** | **1,094** | 43.1% |
+| negative | 1,445 | 56.9% |
+| （内）design_why=true | 1,269 | — |
+| （内）reply_rationale=true | 1,186 | — |
+
+- **正例の criteria 内訳**：(ii)のみ 611／(ii,iii) 473／(iii)のみ 10 → **トレードオフ明示(iii含む) 483件**。
+- 全2,539件にラベル付与・重複/欠落0で検証済み。出力 `data/gharchive/stage3/positives.jsonl`（元Q&A＋criteria＋reason付き）。
+- サンプル品質：vcpkg-tool「なぜmake_generic()より良い?」→「不要な\\server\share処理を避ける」／lc0「なぜハードコード?」→「新backend APIがNN topologyを露出しないため」など、本物の②設計根拠Q&Aが取れている。
+- **信頼性の注意**：シャード間 positive率 31.5%〜53.1% とばらつき大（実証分析①と同じくエージェント間の基準解釈ぶれ）。43.1% は粗い推定。精密化するなら二重ラベル＋人手検証セットが必要。トレードオフ明示(iii)層の方が定義が固く信頼できる。
+
+**到達点**：1週間窓で **clean正例 1,094件**を確保＝当初目標「約1,000件」を達成。「②設計根拠が必要だったのにコードに無かった箇所」の正解ラベル候補が揃った。
+
+**次の一手**：
+1. positives.jsonl から**位置予測の正解ラベル**を整備（どの diff hunk/行に②を残すべきか）。q_url の discussion id → REST で `original_line`/`original_start_line`/`diff_hunk` を取れば、聞かれた行＝正例位置が確定できる（Stage 2 で既にPR APIを叩く実績あり）。
+2. 検証セット（人手 or 二重ラベル）で Stage 3 の precision を実測し 43.1% を較正。
+3. 負例（位置予測の対照）の作り方を設計（同一PR内で聞かれなかった hunk 等）。
+
 関連：[[project-research-goal]]、comment-only-commits 資産（[../documentation/STEERING-documentation.md](../documentation/STEERING-documentation.md)）。
 
 ---
