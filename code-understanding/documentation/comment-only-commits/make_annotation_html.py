@@ -127,6 +127,12 @@ def build_entries(csv_path: Path, db_path: Path, github_token: str) -> list[dict
                     "body_ja":  body_ja,
                 }
 
+        commit_message = row.get("commit_message", "")
+        added_comment  = row.get("added_comment", "")
+        print(f"  [{i:>3}] 翻訳中 ...")
+        commit_message_ja = translate_ja(commit_message)
+        added_comment_ja  = translate_ja(added_comment)
+
         entries.append({
             "index":               i,
             "label":               row.get("label", ""),
@@ -134,13 +140,15 @@ def build_entries(csv_path: Path, db_path: Path, github_token: str) -> list[dict
             "github_url":          row.get("github_url", ""),
             "repo":                repo,
             "commit_date":         row.get("commit_date", ""),
-            "commit_message":      row.get("commit_message", ""),
+            "commit_message":      commit_message,
+            "commit_message_ja":   commit_message_ja,
             "is_different_author": row.get("is_different_author", ""),
             "time_gap_days":       row.get("time_gap_days", ""),
             "file_path":           row.get("file_path", ""),
             "target_class":        row.get("target_class", ""),
             "comment_type":        row.get("comment_type", ""),
-            "added_comment":       row.get("added_comment", ""),
+            "added_comment":       added_comment,
+            "added_comment_ja":    added_comment_ja,
             "target_method":       row.get("target_method", ""),
             "issue":               issue_data,
         })
@@ -305,8 +313,12 @@ function renderCards() {
       </div>
       <div class="card-body">
         <div class="section">
-          <div class="section-label">コミットメッセージ</div>
-          <div class="commit-msg">${esc(e.commit_message)}</div>
+          <div class="section-label">
+            コミットメッセージ
+            <span class="lang-toggle" onclick="toggleLang(${e.index},'commit-msg')">EN/JA</span>
+          </div>
+          <div id="commit-msg-ja-${e.index}" class="commit-msg">${esc(e.commit_message_ja)}</div>
+          <div id="commit-msg-en-${e.index}" class="commit-msg" style="display:none">${esc(e.commit_message)}</div>
         </div>
         <div class="meta-row" style="margin-bottom:10px">
           <span class="meta-item">${esc(e.comment_type)}</span>
@@ -316,8 +328,12 @@ function renderCards() {
         </div>
         ${issueHtml}
         <div class="section">
-          <div class="section-label">追加されたコメント</div>
-          <div class="added-comment">${esc(e.added_comment)}</div>
+          <div class="section-label">
+            追加されたコメント
+            <span class="lang-toggle" onclick="toggleLang(${e.index},'added-comment')">EN/JA</span>
+          </div>
+          <div id="added-comment-ja-${e.index}" class="added-comment">${esc(e.added_comment_ja)}</div>
+          <div id="added-comment-en-${e.index}" class="added-comment" style="display:none">${esc(e.added_comment)}</div>
         </div>
         <div class="section">
           <div class="section-label">対象メソッド（${esc(e.target_class)}）</div>
