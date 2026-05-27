@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>研究概要：AIコード時代のレビューに向けた②設計根拠の位置予測</title>
+<style>
+ :root{--ink:#1a1a2e;--sub:#555;--accent:#2b5797;--accent2:#0b6e4f;--warn:#9a3b1b;
+       --bg:#f6f7f9;--card:#fff;--line:#e2e5ea;--hl:#fff7e6;}
+ *{box-sizing:border-box}
+ body{font-family:"Hiragino Sans","Yu Gothic",system-ui,sans-serif;color:var(--ink);
+      background:var(--bg);line-height:1.75;margin:0}
+ header{background:linear-gradient(135deg,#1f3a5f,#2b5797);color:#fff;padding:48px 24px}
+ .wrap{max-width:880px;margin:0 auto;padding:0 24px}
+ header .wrap{padding:0}
+ h1{font-size:26px;margin:0 0 10px;line-height:1.4}
+ .lede{font-size:16px;opacity:.95;margin:6px 0 0}
+ .tag{display:inline-block;background:rgba(255,255,255,.18);border:1px solid rgba(255,255,255,.4);
+      border-radius:20px;padding:3px 12px;font-size:12px;margin:14px 8px 0 0}
+ section{background:var(--card);border:1px solid var(--line);border-radius:12px;
+         padding:24px 28px;margin:22px 0;box-shadow:0 1px 3px rgba(0,0,0,.04)}
+ h2{font-size:20px;color:var(--accent);border-bottom:2px solid var(--line);
+    padding-bottom:8px;margin:0 0 16px}
+ h3{font-size:16px;color:var(--ink);margin:20px 0 6px}
+ p{margin:8px 0}
+ .muted{color:var(--sub);font-size:14px}
+ .key{background:var(--hl);border-left:4px solid #e0a106;padding:12px 16px;border-radius:0 8px 8px 0;margin:14px 0}
+ .num{display:flex;gap:14px;flex-wrap:wrap;margin:14px 0}
+ .num .b{flex:1;min-width:120px;background:#f0f4fa;border:1px solid var(--line);border-radius:10px;
+         padding:14px;text-align:center}
+ .num .b .v{font-size:24px;font-weight:700;color:var(--accent)}
+ .num .b .l{font-size:12px;color:var(--sub)}
+ table{width:100%;border-collapse:collapse;margin:12px 0;font-size:14px}
+ th,td{border:1px solid var(--line);padding:8px 10px;text-align:left;vertical-align:top}
+ th{background:#eef2f8}
+ .pipe{counter-reset:s;margin:14px 0}
+ .pipe .step{position:relative;padding:12px 12px 12px 52px;border:1px solid var(--line);
+             border-radius:10px;margin:10px 0;background:#fafbfd}
+ .pipe .step::before{counter-increment:s;content:counter(s);position:absolute;left:14px;top:12px;
+   width:26px;height:26px;border-radius:50%;background:var(--accent);color:#fff;
+   text-align:center;line-height:26px;font-weight:700;font-size:14px}
+ .arrow{color:var(--accent);font-weight:700}
+ code{background:#eef0f3;padding:1px 5px;border-radius:4px;font-size:13px}
+ .cite{font-size:13px;color:var(--sub)}
+ .gap{background:#eafaf1;border-left:4px solid var(--accent2);padding:12px 16px;border-radius:0 8px 8px 0;margin:14px 0}
+ .limit{background:#fdf0ec;border-left:4px solid var(--warn);padding:12px 16px;border-radius:0 8px 8px 0;margin:14px 0}
+ .ex{background:#f4f7fb;border:1px solid var(--line);border-radius:8px;padding:10px 14px;margin:8px 0;font-size:14px}
+ .ex .q{color:var(--accent)}.ex .a{color:var(--accent2)}
+ ul{margin:8px 0 8px 4px;padding-left:20px}
+ li{margin:4px 0}
+ footer{text-align:center;color:var(--sub);font-size:13px;padding:30px}
+ .threelayer{display:flex;gap:10px;flex-wrap:wrap;margin:12px 0}
+ .threelayer .ly{flex:1;min-width:200px;border:1px solid var(--line);border-radius:10px;padding:12px 14px}
+ .threelayer .ly h4{margin:0 0 4px;font-size:15px}
+ .ly.solved{background:#eef7ee;border-color:#bcdfbc}
+ .ly.target{background:#fff4e0;border-color:#f0d090}
+</style>
+</head>
+<body>
+<header><div class="wrap">
+ <h1>AIコード時代のレビューに向けて：<br>「②設計根拠」を<u>どのコード位置に残すべきか</u>の予測</h1>
+ <p class="lede">レビューで「なぜこの実装か」と問われた箇所をマイニングし、設計根拠（design rationale）が必要だったのにコードに無かった位置の正解ラベルを構築する。</p>
+ <span class="tag">Modern Code Review</span>
+ <span class="tag">Design Rationale</span>
+ <span class="tag">AI-authored Code</span>
+ <span class="tag">Mining Software Repositories</span>
+</div></header>
+
+<div class="wrap">
+
+<section>
+ <h2>1. 問題設定</h2>
+ <p>AIエージェントが大量のコードを生成する時代に、<b>人間のコードレビューがボトルネック化</b>する。これは仮説ではなく実測がある。</p>
+ <ul>
+  <li>エージェント生成PRの<b>約70%が「レビュー長期化・未レビュー・却下」</b>に陥る。<span class="cite">(Hassan et al. 2025, <i>Agentic Software Engineering</i>, arXiv 2509.06216)</span></li>
+  <li>AIレビューツールを導入しても人間のレビューは速くなっていない<span class="cite">（業界調査：29%遅化・24%時短・47%変化なし, LeadDev）</span></li>
+ </ul>
+ <p>レビューには2つの目的がある——<b>品質保証</b>と<b>知識移転・共同所有</b>。効率化は後者を侵食しうる（理解せず通す <i>rubber-stamping</i> のリスク）。本研究は generic なレビュー効率化ではなく、<b>「変更理解」の核心的な詰まりどころ</b>に焦点を絞る。</p>
+</section>
+
+<section>
+ <h2>2. 詰まりどころ＝「なぜこう変更したか（rationale）」</h2>
+ <p>複数の一次文献が、レビューの困難の中心に <b>変更の rationale（理由）</b> があることを示している。</p>
+ <table>
+  <tr><th>文献</th><th>知見</th></tr>
+  <tr><td>Tao et al. FSE 2012</td><td>rationale は変更理解で<b>最重要</b>の情報ニーズ。ただし良い変更説明があれば容易。</td></tr>
+  <tr><td>Ebert et al. SANER'19/EMSE'21</td><td><b>missing rationale は最頻の混乱原因の1つ。なのに文献の解決策は実質1つだけ＝最大ギャップ。</b>著者自身が「コード/コメントから rationale を自動抽出する研究をすべき」と提言。</td></tr>
+  <tr><td>Pascarella et al. CSCW 2018</td><td>レビュアが最も頻繁に問うのは「代替案は妥当か(N1)」、次いで「正しく理解したか(N2)」、rationale(N3)。N1の判断にも「なぜこの方法を選んだか」が要る。</td></tr>
+ </table>
+
+ <h3>rationale の3層 — 狙うのは②</h3>
+ <div class="threelayer">
+  <div class="ly solved"><h4>① 動機・目的</h4><p class="muted">なぜこの変更が必要か。コミットメッセージで埋まる。生成・評価技術で解決されつつある<span class="cite">(Zeng et al. ICSE 2026 の "Why" ＝機能的目的)</span>。</p></div>
+  <div class="ly target"><h4>② 設計根拠 ★狙い</h4><p class="muted">なぜ<b>この方法</b>を選んだか／代替案とのトレードオフ。<b>どこにも書かれず</b>、レビューの難所。commit研究の "why" は①であって②ではない。</p></div>
+  <div class="ly"><h4>③ 正当化</h4><p class="muted">正しい・壊れないと言える理由。②と連続。</p></div>
+ </div>
+ <p class="muted">重要：論文で②を主張する際は「commit message 研究の why（＝①機能的目的）」と明確に区別する必要がある。さもないと「commitのwhyは解決済み」と却下される。この区別自体が貢献の輪郭を鋭くする。</p>
+</section>
+
+<section>
+ <h2>3. 先行研究の空白</h2>
+ <p>「説明をどこに置くか」と「rationale を文書化するか」は別々に研究されてきたが、その<b>交差点</b>が空いている。</p>
+ <table>
+  <tr><th>系統</th><th>代表研究</th><th>限界</th></tr>
+  <tr><td><b>A. コメント位置予測</b><br>（どこに説明を書くか）</td><td>"Where should I comment my code?" (ICSE 2020)／CommtPst (JSS 2020)／COMCAT (2024)</td><td>位置は当てるが <b>①動機/②設計根拠を区別しない</b>。レビュー需要を使わず既存コメントを正解にする。</td></tr>
+  <tr><td><b>B. rationale の文書化/抽出</b><br>（種類）</td><td>DRMiner (ASE 2024, issueログから)／AlSafwan & Servant (commit rationale を15要素分解)</td><td>②を扱うが <b>コード上のどこ(hunk/行)かは当てない</b>。レビューでもない。</td></tr>
+  <tr><td>C. レビュー説明・質問の分析</td><td>"Explaining Explanations" (TOSEM 2024)／"Code Review as Decision-Making" (EMSE 2025, 質問の認知モデル)</td><td>質問を扱うが小規模観察・認知モデルで、<b>位置予測でもマイニングでもない</b>（むしろ需要の裏づけとして引用可）。</td></tr>
+  <tr><td>D. AIコードレビュー（上位文脈）</td><td>MSR'26 "Review Effort in AI-Generated PRs"／SWE-PRBench (2026)</td><td>工数予測・品質ベンチ。rationale の位置は扱わない。</td></tr>
+ </table>
+ <div class="gap">
+  <b>空白＝本研究の位置</b>：「コードの<b>どの hunk/行に②設計根拠を残すべきか</b>」の予測は見当たらない。
+  系統A（<i>位置</i>）× 系統B（<i>種類＝②</i>）の交差点。差別化点は3つ：
+  <b>(1)</b> レビュー需要を正解ラベル源に使う／<b>(2)</b> ①と②を区別し②に絞る／<b>(3)</b> 位置粒度 × ②種類。
+ </div>
+</section>
+
+<section>
+ <h2>4. 研究の問いとアイデア</h2>
+ <div class="key"><b>RQ（暫定）：</b> コードの hunk/行単位で「ここには②設計根拠を残しておくべき」箇所を予測できるか。それは「レビュアが <i>なぜ</i> と問いがちな箇所」をどれだけ捉えるか。</div>
+ <h3>正解ラベルの作り方 — レビュー質問を必要性の anchor にする</h3>
+ <p>「ここに②が必要だった」という ground truth を、<b>2つの証拠の積</b>で定義する：</p>
+ <ul>
+  <li><b>(a) レビュアが why を聞いた</b> ＝ 第三者が「なぜか分からなかった」独立した需要の証拠。同時に「その rationale がコードに書かれていなかった」証拠（書いてあれば聞かれない）。</li>
+  <li><b>(b) 作者が弁明し、それが受理された</b>（コードを直さず通った）＝ 実装者のミス修正ではなく<b>本物の設計判断</b>である証拠。</li>
+ </ul>
+ <p class="muted">これにより「ミス」と「本物の設計判断」を分離し、laziness 交絡（情報は既にどこかにあった）も排除する。受理された作者の回答＝ground-truth の rationale。</p>
+</section>
+
+<section>
+ <h2>5. データ収集パイプライン</h2>
+ <p class="muted">AIコードのレビューは GitHub にしか存在しないため、実証は <b>GH Archive（自前DL・課金なし）</b>。まず人間PRで手法を確立する。収集窓＝2025-03-03〜03-09 の連続1週間。</p>
+ <div class="pipe">
+  <div class="step"><b>Stage 1 — 抽出＆ペア化</b>：<code>PullRequestReviewCommentEvent</code> を抽出し、「why質問ルート（作者以外・非bot）× 作者返信」をペア化。
+   <div class="muted">453,806 review comment <span class="arrow">→</span> 2,985 ペア候補（2,665 PR）</div></div>
+  <div class="step"><b>Stage 2 — REST検証</b>：<code>merged</code> ＋ ルートコメントの行不変（position）で「弁明して受理」を確定。
+   <div class="muted">2,985 <span class="arrow">→</span> 2,539 accepted_unchanged（85.1%）</div></div>
+  <div class="step"><b>Stage 3 — LLM分類</b>：質問が本物の設計why（ii/iii）か × 作者返信が rationale か（laziness除外）を判定。
+   <div class="muted">2,539 <span class="arrow">→</span> <b>1,094 正例（43.1%）</b></div></div>
+ </div>
+ <div class="num">
+  <div class="b"><div class="v">453,806</div><div class="l">review comment / 週</div></div>
+  <div class="b"><div class="v">2,985</div><div class="l">why質問×返信ペア</div></div>
+  <div class="b"><div class="v">2,539</div><div class="l">merged＋行不変</div></div>
+  <div class="b"><div class="v">1,094</div><div class="l">②設計根拠の正例</div></div>
+ </div>
+ <h3>正例サンプル（本物の②）</h3>
+ <div class="ex"><span class="q">Q: なぜ make_generic() より良い?</span><br><span class="a">A: make_generic は不要な <code>\\server\share</code> 処理をする。ここは相対パスと分かっている。</span><span class="cite"> — microsoft/vcpkg-tool</span></div>
+ <div class="ex"><span class="q">Q: なぜハードコード?</span><br><span class="a">A: 新 backend API は NN topology を露出しないため、interface に leak させる必要が出る。</span><span class="cite"> — LeelaChessZero/lc0</span></div>
+ <div class="ex"><span class="q">Q: なぜ local_session?</span><br><span class="a">A: async_get_db だと anext() が要り煩雑。こちらが cleaner。</span><span class="cite"> — OpenLabsHQ/API</span></div>
+</section>
+
+<section>
+ <h2>6. 限界（正直に）</h2>
+ <div class="limit">
+  <ul>
+   <li><b>Pascarella bias</b>：拾えるのは「声に出された需要」だけ＝高 precision・低 recall。モデルが学ぶのは「客観的に②が必要な箇所」ではなく「<b>レビュアが聞きがちな箇所</b>」。学習正例としては許容だが主張時に断る。</li>
+   <li><b>Stage 3 の信頼性</b>：positive率がシャード間で 31.5〜53.1% とばらつき大＝LLM間の基準解釈ぶれ。43.1% は粗い推定。<b>現在、人手検証セット（各シャード10件・計100件）で precision を較正中。</b></li>
+   <li><b>Stage 2 の弱さ</b>：行不変フィルタは Stage 1 の返信フィルタと情報が重複し、追加弁別はほぼゼロだった。「受理」の強い証拠が merged のみ（<code>isResolved</code> 未取得）。</li>
+   <li>公開リポジトリ・人間PRのみ（手法確立後にAIコードへ拡大）。</li>
+  </ul>
+ </div>
+</section>
+
+<section>
+ <h2>7. 現状と次の一手</h2>
+ <p>データ収集パイプライン（Stage 1–3）は完走し、正例 1,094 件を確保。現在はラベル整備の前段として<b>アノテーション品質の人手検証</b>を実施している。</p>
+ <ul>
+  <li>① Stage 3 の precision を人手検証で較正（実施中）</li>
+  <li>② 正例の <code>diff_hunk</code>/<code>original_line</code> を取得し、<b>位置予測の正解ラベル</b>を整備</li>
+  <li>③ 負例（同一PR内で聞かれなかった hunk 等）の設計 → 位置予測モデルの学習・評価</li>
+ </ul>
+</section>
+
+</div>
+<footer>研究探索メモ（tekitou / code-review-efficiency）。数値・引用は実行ログと一次文献に基づく。最終更新：2026-05-27</footer>
+</body>
+</html>
